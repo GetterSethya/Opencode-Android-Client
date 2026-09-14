@@ -67,6 +67,17 @@ export function useFileContentProgress(
   return progress;
 }
 
+/** Project folders the server knows about, for the new-session folder picker. */
+export function useProjects(server: ServerConfig, enabled = true) {
+  const client = useMemo(() => createClientFromServer(server), [server]);
+  return useQuery({
+    queryKey: ['projects', ...serverKey(server)],
+    queryFn: () => client.listProjects(),
+    enabled,
+    staleTime: 30 * 1000,
+  });
+}
+
 /** Working-tree changes for the Review panel. */
 export function useVcsDiff(server: ServerConfig, enabled = true) {
   const client = useMemo(() => createClientFromServer(server), [server]);

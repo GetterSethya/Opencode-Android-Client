@@ -3,6 +3,7 @@ import {
   ChevronDownIcon,
   CircleIcon,
   ClockIcon,
+  MessageCircleIcon,
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react-native';
@@ -162,6 +163,275 @@ export function ToolOutput({ className, output, errorText }: ToolOutputProps) {
         ) : (
           content
         )}
+      </View>
+    </View>
+  );
+}
+
+export type QuestionToolOption = {
+  label: string;
+  description?: string;
+};
+
+export type QuestionToolItem = {
+  header?: string;
+  question: string;
+  options: QuestionToolOption[];
+  multiple?: boolean;
+};
+
+/**
+ * Reads the `question` tool's input. The shape is
+ * `{ questions: [{ header, question, options: [{ label, description }], multiple }] }`
+ * but comes straight off the wire, so every field is treated as optional.
+ */
+export function parseQuestionInput(input: unknown): QuestionToolItem[] {
+  if (!input || typeof input !== 'object') {
+    return [];
+  }
+  const raw = (input as { questions?: unknown }).questions;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const items: QuestionToolItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const question = entry as Record<string, unknown>;
+    if (typeof question.question !== 'string' || question.question.length === 0) {
+      continue;
+    }
+    const options: QuestionToolOption[] = [];
+    if (Array.isArray(question.options)) {
+      for (const option of question.options) {
+        if (option && typeof option === 'object') {
+          const { label, description } = option as Record<string, unknown>;
+          if (typeof label === 'string') {
+            options.push({
+              label,
+              description: typeof description === 'string' ? description : undefined,
+            });
+          }
+        }
+      }
+    }
+    items.push({
+      header: typeof question.header === 'string' ? question.header : undefined,
+      question: question.question,
+      options,
+      multiple: question.multiple === true,
+    });
+  }
+  return items;
+}
+
+/** Selected labels per question, from the completed tool part's metadata. */
+export function parseQuestionAnswers(metadata: unknown): string[][] {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+  const raw = (metadata as { answers?: unknown }).answers;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.map((entry) =>
+    Array.isArray(entry) ? entry.filter((value): value is string => typeof value === 'string') : [],
+  );
+}
+
+/**
+ * Renders the `question` tool: the prompt, its options, and — once answered —
+ * which option was picked. Answers that don't match an option (free-form
+ * replies) are shown verbatim.
+ */
+export function QuestionTool({
+  questions,
+  answers = [],
+  answered = false,
+  className,
+}: {
+  questions: QuestionToolItem[];
+  answers?: string[][];
+  answered?: boolean;
+  className?: string;
+}) {
+  const colors = useThemeColors();
+
+  if (questions.length === 0) {
+    return null;
+  }
+
+  return (
+    <View className={cn('gap-2', className)}>
+      {questions.map((item, questionIndex) => {
+        const selected = answers[questionIndex] ?? [];
+        const selectedSet = new Set(selected);
+        const freeForm = selected.filter(
+          (answer) => !item.options.some((option) => option.label === answer),
+        );
+        return (
+          <View
+            key={questionIndex}
+            className="gap-2 rounded-xl border border-border bg-surface p-3"
+          >
+            {item.header ? (
+              <Text className="text-xs font-medium uppercase tracking-wide text-muted">
+                {item.header}
+              </Text>
+            ) : null}
+            <Text className="text-sm text-foreground">{item.question}</Text>
+
+            {item.options.length > 0 ? (
+              <View className="gap-1.5 pt-0.5">
+                {item.options.map((option, optionIndex) => {
+                  const isSelected = selectedSet.has(option.label);
+                  return (
+                    <View
+                      key={optionIndex}
+                      className={cn(
+                        'flex-row items-start gap-2 rounded-lg border px-2.5 py-2',
+                        isSelected
+                          ? 'border-success bg-success/10'
+                          : 'border-border bg-surface-secondary',
+                      )}
+                    >
+                      <View style={{ marginTop: 1 }}>
+                        {isSelected ? (
+                          <CheckCircleIcon size={14} color={colors.success} />
+                        ) : (
+                          <CircleIcon size={14} color={colors.muted} />
+                        )}
+                      </View>
+                      <View className="flex-1 gap-0.5">
+                        <Text className="text-sm text-foreground">{option.label}</Text>
+                        {option.description ? (
+                          <Text className="text-xs text-muted">{option.description}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {freeForm.map((answer) => (
+              <View
+                key={answer}
+                className="flex-row items-start gap-2 rounded-lg border border-success bg-success/10 px-2.5 py-2"
+              >
+                <View style={{ marginTop: 1 }}>
+                  <MessageCircleIcon size={14} color={colors.success} />
+                </View>
+                <Text className="flex-1 text-sm text-foreground">{answer}</Text>
+              </View>
+            ))}
+
+            {!answered && selected.length === 0 ? (
+              <Text className="text-xs text-muted">
+                {item.options.length > 0 ? 'Waiting for an answer…' : 'Waiting for a response…'}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+export type TodoItemStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+
+export type TodoItem = {
+  content: string;
+  status: TodoItemStatus;
+  priority?: string;
+};
+
+const TODO_STATUSES: TodoItemStatus[] = ['pending', 'in_progress', 'completed', 'cancelled'];
+
+/**
+ * Reads the `todowrite` tool's input (`{ todos: [{ content, status, priority }] }`).
+ * The list is streamed, so malformed or partial entries are skipped rather
+ * than rendered as broken rows.
+ */
+export function parseTodoInput(input: unknown): TodoItem[] {
+  if (!input || typeof input !== 'object') {
+    return [];
+  }
+  const raw = (input as { todos?: unknown }).todos;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const todos: TodoItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const todo = entry as Record<string, unknown>;
+    if (typeof todo.content !== 'string' || todo.content.length === 0) {
+      continue;
+    }
+    const status =
+      typeof todo.status === 'string' && (TODO_STATUSES as string[]).includes(todo.status)
+        ? (todo.status as TodoItemStatus)
+        : 'pending';
+    todos.push({
+      content: todo.content,
+      status,
+      priority: typeof todo.priority === 'string' ? todo.priority : undefined,
+    });
+  }
+  return todos;
+}
+
+/** Renders the `todowrite` tool as a checklist instead of raw JSON. */
+export function TodoTool({ todos, className }: { todos: TodoItem[]; className?: string }) {
+  const colors = useThemeColors();
+
+  if (todos.length === 0) {
+    return null;
+  }
+
+  const done = todos.filter((todo) => todo.status === 'completed').length;
+
+  return (
+    <View className={cn('gap-2 rounded-xl border border-border bg-surface p-3', className)}>
+      <Text className="text-xs font-medium uppercase tracking-wide text-muted">
+        {done} of {todos.length} done
+      </Text>
+      <View className="gap-1.5">
+        {todos.map((todo, index) => {
+          const isDone = todo.status === 'completed' || todo.status === 'cancelled';
+          return (
+            <View key={index} className="flex-row items-start gap-2">
+              <View style={{ marginTop: 2 }}>
+                {todo.status === 'completed' ? (
+                  <CheckCircleIcon size={14} color={colors.success} />
+                ) : todo.status === 'in_progress' ? (
+                  <ClockIcon size={14} color={colors.foreground} />
+                ) : todo.status === 'cancelled' ? (
+                  <XCircleIcon size={14} color={colors.muted} />
+                ) : (
+                  <CircleIcon size={14} color={colors.muted} />
+                )}
+              </View>
+              <Text
+                className={cn(
+                  'flex-1 text-sm',
+                  todo.status === 'in_progress' ? 'font-medium text-foreground' : 'text-foreground',
+                  isDone && 'text-muted line-through',
+                )}
+              >
+                {todo.content}
+              </Text>
+              {todo.priority === 'high' && !isDone ? (
+                <Badge variant="secondary">
+                  <Text className="text-xs text-foreground">high</Text>
+                </Badge>
+              ) : null}
+            </View>
+          );
+        })}
       </View>
     </View>
   );

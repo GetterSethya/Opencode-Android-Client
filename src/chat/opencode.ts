@@ -15,6 +15,7 @@ export type OpencodeToolState =
       input: Record<string, unknown>;
       output: string;
       title: string;
+      metadata?: Record<string, unknown>;
     }
   | { status: 'error'; input: Record<string, unknown>; error: string };
 
@@ -96,6 +97,17 @@ export type OpencodeSession = {
   time: { created: number; updated: number };
   tokens?: OpencodeSessionTokens;
   cost?: number;
+  /** Project folder this session belongs to (absolute path on the server). */
+  directory?: string;
+  projectID?: string;
+};
+
+/** A project folder the server knows about. */
+export type OpencodeProject = {
+  id: string;
+  worktree: string;
+  vcs?: string;
+  time?: { created?: number; updated?: number };
 };
 
 export type OpencodeModel = {
@@ -419,6 +431,11 @@ export class OpencodeClient {
 
   listSessions() {
     return this.request<OpencodeSession[]>('/session');
+  }
+
+  /** Project folders the server knows about (each has an absolute worktree). */
+  listProjects() {
+    return this.request<OpencodeProject[]>('/project');
   }
 
   createSession(title?: string) {

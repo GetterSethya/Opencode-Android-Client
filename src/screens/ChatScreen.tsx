@@ -35,6 +35,11 @@ import {
   ToolHeader,
   ToolInput,
   ToolOutput,
+  QuestionTool,
+  parseQuestionAnswers,
+  parseQuestionInput,
+  TodoTool,
+  parseTodoInput,
 } from '@/components/ai-elements';
 import { HamburgerButton, SessionsDrawer, type SessionsDrawerHandle } from '@/components/chat/sessions-drawer';
 import { ModelPicker } from '@/components/chat/model-picker';
@@ -46,6 +51,7 @@ import {
   SessionPanelSheet,
   useSessionPanels,
 } from '@/components/chat/session-panels';
+import { NewSessionSheet } from '@/components/chat/new-session-sheet';
 import { SettingsForm } from '@/components/chat/settings-form';
 import { SystemBars } from '@/components/system-bars';
 import {
@@ -55,6 +61,9 @@ import {
 } from '@/components/ui/error-state';
 import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
+
+
+
 
 const STARTER_SUGGESTIONS = [
   'What can you do?',
@@ -168,6 +177,43 @@ const MessageItem = memo(function MessageItem({
               UIMessage['parts'][number],
               { type: `tool-${string}` }
             >;
+            // The question tool's input is a prompt for the user, not data to
+            // dump as JSON, so it gets its own presentation (expanded by
+            // default) showing the options and the chosen answer.
+            if (toolPart.toolName === 'question') {
+              return (
+                <Tool key={index} defaultOpen>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <QuestionTool
+                      questions={parseQuestionInput(toolPart.input)}
+                      answers={parseQuestionAnswers(toolPart.metadata)}
+                      answered={toolPart.state === 'output-available'}
+                    />
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            // The todo tool is a checklist; showing its JSON input/output is
+            // noise, so render the items with their status instead.
+            if (toolPart.toolName === 'todowrite') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <TodoTool todos={parseTodoInput(toolPart.input)} />
+                  </ToolContent>
+                </Tool>
+              );
+            }
             return (
               <Tool key={index}>
                 <ToolHeader
@@ -296,6 +342,7 @@ export function ChatScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
   const {
     menuOpen,
     setMenuOpen,
@@ -406,8 +453,9 @@ export function ChatScreen() {
         sessions={sessions}
         activeSessionId={activeSessionId}
         activeServerName={activeServer.name}
+        projectDirectory={activeServer.directory}
         onSelect={selectSession}
-        onNewSession={createSession}
+        onNewSession={() => setNewSessionOpen(true)}
         onDeleteSession={deleteSession}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpen={() => {
@@ -493,6 +541,17 @@ export function ChatScreen() {
         </SafeAreaView>
       </SessionsDrawer>
 
+      <NewSessionSheet
+        visible={newSessionOpen}
+        onClose={() => setNewSessionOpen(false)}
+        server={activeServer}
+        currentDirectory={activeServer.directory}
+        busy={isLoading}
+        onCreate={(directory) => {
+          setNewSessionOpen(false);
+          void createSession(directory);
+        }}
+      />
       <ModelPicker
         visible={modelOpen}
         onClose={() => setModelOpen(false)}

@@ -1,4 +1,5 @@
 import {
+  FolderIcon,
   MenuIcon,
   MessageSquareIcon,
   PlusIcon,
@@ -65,6 +66,8 @@ export type SessionsDrawerProps = {
   sessions: OpencodeSession[];
   activeSessionId: string | null;
   activeServerName?: string;
+  /** Project folder the sessions belong to (shown under the header). */
+  projectDirectory?: string;
   onSelect: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => void;
@@ -79,6 +82,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
       sessions,
       activeSessionId,
       activeServerName,
+      projectDirectory,
       onSelect,
       onNewSession,
       onDeleteSession,
@@ -171,7 +175,16 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
             </Pressable>
           </View>
 
-          <View className="px-3 pb-2">
+          <View className="gap-2 px-3 pb-2">
+            <View className="flex-row items-center gap-2 rounded-xl bg-surface-secondary px-3 py-2.5">
+              <FolderIcon size={16} color={colors.muted} />
+              <View className="flex-1">
+                <Text className="text-xs text-muted">Project folder</Text>
+                <Text className="text-sm text-foreground" numberOfLines={1} ellipsizeMode="head">
+                  {projectDirectory || 'Server default'}
+                </Text>
+              </View>
+            </View>
             <Pressable
               className="flex-row items-center justify-center gap-2 rounded-xl bg-foreground py-3"
               onPress={() => {
@@ -274,6 +287,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
         insets.bottom,
         insets.left,
         activeServerName,
+        projectDirectory,
         visibleSessions,
         filtered.length,
         showAll,

@@ -15,6 +15,7 @@ import {
   type OpencodeToolState,
 } from './opencode';
 import { useChatSettings } from './settings';
+import { createClientFromServer } from './use-opencode-providers';
 import type { ChatStatus, ToolState, UIMessage, UIMessagePart } from './types';
 
 type MessageRecord = {
@@ -67,6 +68,10 @@ function partToUI(part: OpencodePart): UIMessagePart | null {
         input: toolState.input,
         output: toolState.status === 'completed' ? toolState.output : undefined,
         errorText: toolState.status === 'error' ? toolState.error : undefined,
+        metadata:
+          toolState.status === 'completed' || toolState.status === 'running'
+            ? toolState.metadata
+            : undefined,
       };
     }
     case 'step-start':
@@ -175,7 +180,7 @@ export const FORK_WHOLE_SESSION = '__session__';
 
 export function useOpencodeChat() {
   const queryClient = useQueryClient();
-  const { activeServer, ready: settingsReady } = useChatSettings();
+  const { activeServer, ready: settingsReady, updateServer } = useChatSettings();
   const client = useMemo(
     () =>
       new OpencodeClient({
@@ -443,22 +448,50 @@ export function useOpencodeChat() {
     }
   }, [client]);
 
-  const createSession = useCallback(async () => {
-    try {
-      const session = await client.createSession('New session');
-      setSessions((prev) => sortSessions([session, ...prev]));
-      setState({});
-      setActiveSessionId(session.id);
-      activeSessionIdRef.current = session.id;
-      setHistoryLimit(INITIAL_HISTORY_LIMIT);
-      setHasMoreOlder(false);
-      setStatus('ready');
-      setError(null);
-      setLoadError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, [client]);
+  /**
+   * Creates a session, optionally in a different project folder. When the
+   * folder differs from the server's configured directory the setting is
+   * updated and that session becomes the active one (sessions are scoped to
+   * their folder, so the list is reloaded for it).
+   */
+  const createSession = useCallback(
+    async (directory?: string) => {
+      const current = activeServer.directory ?? '';
+      const target = directory ?? current;
+      try {
+        const targetClient =
+          target === current
+            ? client
+            : createClientFromServer({ ...activeServer, directory: target });
+        const session = await targetClient.createSession('New session');
+        if (target !== current) {
+          updateServer(activeServer.id, { directory: target });
+          setSessions([session]);
+          setState({});
+          setActiveSessionId(session.id);
+          activeSessionIdRef.current = session.id;
+          setHistoryLimit(INITIAL_HISTORY_LIMIT);
+          setHasMoreOlder(false);
+          setStatus('ready');
+          setError(null);
+          setLoadError(null);
+          return;
+        }
+        setSessions((prev) => sortSessions([session, ...prev]));
+        setState({});
+        setActiveSessionId(session.id);
+        activeSessionIdRef.current = session.id;
+        setHistoryLimit(INITIAL_HISTORY_LIMIT);
+        setHasMoreOlder(false);
+        setStatus('ready');
+        setError(null);
+        setLoadError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [activeServer, client, updateServer],
+  );
 
   const selectSession = useCallback(
     async (sessionId: string) => {

@@ -27,6 +27,8 @@ export type ToolUIPart = {
   input?: unknown;
   output?: unknown;
   errorText?: string;
+  /** Tool-specific extras (e.g. the question tool's recorded answers). */
+  metadata?: Record<string, unknown>;
 };
 
 export type DynamicToolUIPart = {
@@ -38,6 +40,7 @@ export type DynamicToolUIPart = {
   input?: unknown;
   output?: unknown;
   errorText?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type SourceUrlUIPart = {

@@ -40,6 +40,10 @@ module.exports = {
           style: 'auto',
         },
       ],
+      // expo-dev-client auto-registers a deep-link scheme (exp+<slug>) that
+      // collides with the development build's, so Android cannot tell which
+      // app should handle it. The release build has no use for that scheme.
+      ...(isRelease ? [['expo-dev-client', { addGeneratedScheme: false }]] : []),
       './plugins/with-android-manifest-tweaks',
     ],
   },
