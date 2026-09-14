@@ -1,4 +1,4 @@
-# opencode Android client
+# Opencode Android client
 
 Unofficial Android client for an [opencode](https://opencode.ai) server, built with Expo SDK 57 and React Native. It connects to a running `opencode serve` instance over HTTP + SSE and gives you the full session experience — streaming chat, tool calls, provider/model management, diff review, and file browsing — from your phone.
 
