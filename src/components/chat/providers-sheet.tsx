@@ -3,7 +3,8 @@ import {
   PlusIcon,
   SearchIcon,
 } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import {
   Alert,
@@ -401,6 +402,19 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
   const [tab, setTab] = useState<'providers' | 'models'>(initialTab);
   const [view, setView] = useState<SheetView>({ name: 'tabs' });
   const keyboardHeight = useKeyboardHeight();
+
+  // The sheet stays mounted while hidden, so a provider added on the server
+  // since the last fetch would otherwise never appear. Refresh on open.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ['providers-catalog'] });
+    void queryClient.invalidateQueries({ queryKey: ['provider-auth-methods'] });
+    void queryClient.invalidateQueries({ queryKey: ['global-config'] });
+    void queryClient.invalidateQueries({ queryKey: ['opencode-providers'] });
+  }, [visible, queryClient]);
   const scrollMaxHeight =
     keyboardHeight > 0
       ? Math.max(240, height - keyboardHeight - 320)

@@ -47,7 +47,7 @@ function createId() {
 const defaultServer: ServerConfig = {
   id: createId(),
   name: 'Local',
-  serverUrl: process.env.EXPO_PUBLIC_OPENCODE_URL ?? 'http://192.168.18.96:4097',
+  serverUrl: process.env.EXPO_PUBLIC_OPENCODE_URL ?? 'http://192.168.18.96:4096',
   username: 'opencode',
   password: '',
   directory: process.env.EXPO_PUBLIC_OPENCODE_DIRECTORY ?? '',

@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import EventSource from 'react-native-sse';
 
@@ -173,6 +174,7 @@ const MAX_HISTORY_LIMIT = 200;
 export const FORK_WHOLE_SESSION = '__session__';
 
 export function useOpencodeChat() {
+  const queryClient = useQueryClient();
   const { activeServer, ready: settingsReady } = useChatSettings();
   const client = useMemo(
     () =>
@@ -372,6 +374,17 @@ export function useOpencodeChat() {
         return;
       }
 
+      // Config reloads (adding/removing providers, models, credentials) and
+      // server restarts invalidate the cached provider catalog. Without this
+      // the app keeps showing the provider list it fetched at startup.
+      if (parsed.type === 'catalog.updated' || parsed.type === 'global.disposed') {
+        void queryClient.invalidateQueries({ queryKey: ['providers-catalog'] });
+        void queryClient.invalidateQueries({ queryKey: ['provider-auth-methods'] });
+        void queryClient.invalidateQueries({ queryKey: ['global-config'] });
+        void queryClient.invalidateQueries({ queryKey: ['opencode-providers'] });
+        return;
+      }
+
       if (
         parsed.type === 'message.updated' ||
         parsed.type === 'message.part.updated' ||
@@ -397,7 +410,7 @@ export function useOpencodeChat() {
     return () => {
       eventSource.close();
     };
-  }, [client, settingsReady, loadSession]);
+  }, [client, settingsReady, loadSession, queryClient]);
 
   const loadOlderMessages = useCallback(async () => {
     const sid = activeSessionIdRef.current;
