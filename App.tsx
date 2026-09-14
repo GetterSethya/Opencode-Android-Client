@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ChatSettingsProvider } from '@/chat/settings';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { ChatScreen } from '@/screens/ChatScreen';
 
 const queryClient = new QueryClient();
@@ -19,7 +20,9 @@ export default function App() {
           <ChatSettingsProvider>
             <HeroUINativeProvider>
               <QueryClientProvider client={queryClient}>
-                <ChatScreen />
+                <ErrorBoundary>
+                  <ChatScreen />
+                </ErrorBoundary>
               </QueryClientProvider>
             </HeroUINativeProvider>
           </ChatSettingsProvider>

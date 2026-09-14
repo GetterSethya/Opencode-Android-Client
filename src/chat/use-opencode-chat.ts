@@ -3,6 +3,7 @@ import EventSource from 'react-native-sse';
 
 import { toFilePart, type PendingAttachment } from './attachments';
 import {
+  isSessionNotFoundError,
   OpencodeClient,
   type OpencodeEvent,
   type OpencodeMessage,
@@ -168,6 +169,9 @@ const INITIAL_HISTORY_LIMIT = 10;
 const HISTORY_PAGE_SIZE = 10;
 const MAX_HISTORY_LIMIT = 200;
 
+/** Sentinel fork target for a whole-session fork (no message ID). */
+export const FORK_WHOLE_SESSION = '__session__';
+
 export function useOpencodeChat() {
   const { activeServer, ready: settingsReady } = useChatSettings();
   const client = useMemo(
@@ -186,15 +190,27 @@ export function useOpencodeChat() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<ChatStatus>('ready');
   const [error, setError] = useState<string | null>(null);
+  // Fatal-to-view failures (initial load, session select): rendered as a
+  // full 404/500 screen when there are no messages to show. Transient
+  // failures (send, fork, refresh) stay in `error` as an inline banner.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [historyLimit, setHistoryLimit] = useState(INITIAL_HISTORY_LIMIT);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  // Message ID being forked, or FORK_WHOLE_SESSION for a full-session fork.
+  const [forkTarget, setForkTarget] = useState<string | null>(null);
+  const forkingRef = useRef(false);
 
   const activeSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  const sessionsRef = useRef<OpencodeSession[]>([]);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   const loadSession = useCallback(
     async (sessionId: string) => {
@@ -207,15 +223,10 @@ export function useOpencodeChat() {
     [client],
   );
 
-  useEffect(() => {
-    if (!settingsReady) {
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
+  const bootstrap = useCallback(
+    async (cancelledRef: { cancelled: boolean }) => {
       setError(null);
+      setLoadError(null);
       setStatus('ready');
       setState({});
       setActiveSessionId(null);
@@ -226,7 +237,7 @@ export function useOpencodeChat() {
 
       try {
         const list = await client.listSessions();
-        if (cancelled) {
+        if (cancelledRef.cancelled) {
           return;
         }
         const sorted = sortSessions(list);
@@ -234,7 +245,7 @@ export function useOpencodeChat() {
 
         if (sorted.length > 0) {
           const history = await client.listMessages(sorted[0].id, INITIAL_HISTORY_LIMIT);
-          if (cancelled) {
+          if (cancelledRef.cancelled) {
             return;
           }
           setState(buildState(history));
@@ -243,7 +254,7 @@ export function useOpencodeChat() {
           setHasMoreOlder(history.length >= INITIAL_HISTORY_LIMIT);
         } else {
           const session = await client.createSession('opencode mobile');
-          if (cancelled) {
+          if (cancelledRef.cancelled) {
             return;
           }
           setSessions([session]);
@@ -251,20 +262,30 @@ export function useOpencodeChat() {
           activeSessionIdRef.current = session.id;
         }
       } catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause));
+        if (!cancelledRef.cancelled) {
+          setLoadError(cause instanceof Error ? cause.message : String(cause));
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelledRef.cancelled) {
           setIsLoading(false);
         }
       }
-    })();
+    },
+    [client],
+  );
+
+  useEffect(() => {
+    if (!settingsReady) {
+      return;
+    }
+
+    const cancelledRef = { cancelled: false };
+    void bootstrap(cancelledRef);
 
     return () => {
-      cancelled = true;
+      cancelledRef.cancelled = true;
     };
-  }, [client, settingsReady]);
+  }, [bootstrap, settingsReady]);
 
   useEffect(() => {
     if (!settingsReady) {
@@ -309,13 +330,44 @@ export function useOpencodeChat() {
         return;
       }
 
-      if (parsed.type === 'session.updated' || parsed.type === 'session.created') {
+      if (
+        parsed.type === 'session.updated' ||
+        parsed.type === 'session.created' ||
+        parsed.type === 'session.forked'
+      ) {
         const info = (parsed.properties as { info?: OpencodeSession }).info;
         if (info?.id) {
           setSessions((prev) => {
             const others = prev.filter((session) => session.id !== info.id);
             return sortSessions([info, ...others]);
           });
+        }
+        return;
+      }
+
+      if (parsed.type === 'session.deleted') {
+        const deletedId = (parsed.properties as { sessionID?: string }).sessionID;
+        if (deletedId) {
+          setSessions((prev) => prev.filter((session) => session.id !== deletedId));
+          if (activeSessionIdRef.current === deletedId) {
+            const remaining = sortSessions(
+              sessionsRef.current.filter((session) => session.id !== deletedId),
+            );
+            const next = remaining[0];
+            if (next) {
+              void loadSession(next.id).catch(() => {
+                // Fallback failed (e.g. also deleted); clear instead.
+                activeSessionIdRef.current = null;
+                setActiveSessionId(null);
+                setState({});
+              });
+            } else {
+              activeSessionIdRef.current = null;
+              setActiveSessionId(null);
+              setState({});
+              setStatus('ready');
+            }
+          }
         }
         return;
       }
@@ -345,7 +397,7 @@ export function useOpencodeChat() {
     return () => {
       eventSource.close();
     };
-  }, [client, settingsReady]);
+  }, [client, settingsReady, loadSession]);
 
   const loadOlderMessages = useCallback(async () => {
     const sid = activeSessionIdRef.current;
@@ -389,6 +441,7 @@ export function useOpencodeChat() {
       setHasMoreOlder(false);
       setStatus('ready');
       setError(null);
+      setLoadError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -401,17 +454,53 @@ export function useOpencodeChat() {
       }
       setIsLoading(true);
       setError(null);
+      setLoadError(null);
       setStatus('ready');
       try {
         await loadSession(sessionId);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        if (isSessionNotFoundError(cause)) {
+          // Stale entry (deleted elsewhere): drop it instead of showing raw JSON.
+          setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+          setError('That session no longer exists.');
+        } else {
+          setLoadError(cause instanceof Error ? cause.message : String(cause));
+        }
       } finally {
         setIsLoading(false);
       }
     },
     [loadSession],
   );
+
+  /**
+   * Re-runs the current view load after a full-screen 404/500: reloads the
+   * active session, or bootstraps from scratch when there is none.
+   */
+  const retryLoad = useCallback(async () => {
+    const sid = activeSessionIdRef.current;
+    setLoadError(null);
+    if (sid) {
+      setIsLoading(true);
+      try {
+        await loadSession(sid);
+      } catch (cause) {
+        if (isSessionNotFoundError(cause)) {
+          setSessions((prev) => prev.filter((session) => session.id !== sid));
+          setActiveSessionId(null);
+          activeSessionIdRef.current = null;
+          setState({});
+          setLoadError('That session no longer exists.');
+        } else {
+          setLoadError(cause instanceof Error ? cause.message : String(cause));
+        }
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+    await bootstrap({ cancelled: false });
+  }, [bootstrap, loadSession]);
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
@@ -472,6 +561,7 @@ export function useOpencodeChat() {
       }));
       setStatus('submitted');
       setError(null);
+      setLoadError(null);
 
       try {
         const parts: OpencodePartInput[] = [];
@@ -489,6 +579,38 @@ export function useOpencodeChat() {
       }
     },
     [client, activeServer.model],
+  );
+
+  /**
+   * Fork the active session into a new session. With a message ID the fork
+   * copies history up to that message; without one the whole session is
+   * copied. The new session becomes the active session. Forking a large
+   * session can take a while server-side, so callers should reflect
+   * `isForking` in the UI.
+   */
+  const forkSession = useCallback(
+    async (messageID?: string) => {
+      const sid = activeSessionIdRef.current;
+      if (!sid || forkingRef.current) {
+        return null;
+      }
+      forkingRef.current = true;
+      setForkTarget(messageID ?? FORK_WHOLE_SESSION);
+      try {
+        const session = await client.forkSession(sid, messageID);
+        setSessions((prev) => sortSessions([session, ...prev]));
+        await loadSession(session.id);
+        setError(null);
+        return session;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        return null;
+      } finally {
+        forkingRef.current = false;
+        setForkTarget(null);
+      }
+    },
+    [client, loadSession],
   );
 
   const stop = useCallback(async () => {
@@ -514,17 +636,22 @@ export function useOpencodeChat() {
     messages,
     status,
     error,
+    loadError,
     isLoading,
     isLoadingOlder,
     hasMoreOlder,
+    forkTarget,
+    isForking: forkTarget !== null,
     sessions,
     activeSession,
     activeSessionId,
     createSession,
     selectSession,
     deleteSession,
+    forkSession,
     refreshSessions,
     loadOlderMessages,
+    retryLoad,
     sendMessage,
     stop,
   };

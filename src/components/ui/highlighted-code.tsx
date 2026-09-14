@@ -226,3 +226,20 @@ export function useHighlightedLines(code: string, language: Language) {
   const prismTheme = usePrismTheme();
   return useMemo(() => ({ code, language, prismTheme }), [code, language, prismTheme]);
 }
+
+/**
+ * Maximum rendered line length. Minified files pack megabytes into a single
+ * line; feeding those to Prism (regex-heavy) or a single native text node
+ * hangs or OOMs the app, so callers cap lines before rendering.
+ */
+export const MAX_RENDERED_LINE_LENGTH = 2000;
+
+export function truncateLongLines(code: string, maxLength = MAX_RENDERED_LINE_LENGTH) {
+  if (code.length <= maxLength) {
+    return code;
+  }
+  return code
+    .split('\n')
+    .map((line) => (line.length > maxLength ? `${line.slice(0, maxLength)}…` : line))
+    .join('\n');
+}

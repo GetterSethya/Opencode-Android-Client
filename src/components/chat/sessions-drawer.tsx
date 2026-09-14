@@ -69,6 +69,7 @@ export type SessionsDrawerProps = {
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => void;
   onOpenSettings: () => void;
+  onOpen?: () => void;
   children: ReactNode;
 };
 
@@ -82,6 +83,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
       onNewSession,
       onDeleteSession,
       onOpenSettings,
+      onOpen,
       children,
     },
     ref,
@@ -295,6 +297,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
         keyboardDismissMode="on-drag"
         onDrawerOpen={() => {
           openRef.current = true;
+          onOpen?.();
         }}
         onDrawerClose={() => {
           openRef.current = false;

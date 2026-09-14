@@ -74,16 +74,19 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
 
   const [editing, setEditing] = useState<ServerConfig | null>(null);
   const [draft, setDraft] = useState<Omit<ServerConfig, 'id'>>(emptyServer);
+  const [isFormOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setEditing(null);
+      setFormOpen(false);
     }
   }, [visible]);
 
   const startAdd = () => {
     setEditing(null);
     setDraft({ ...emptyServer, name: `Server ${servers.length + 1}` });
+    setFormOpen(true);
   };
 
   const startEdit = (server: ServerConfig) => {
@@ -95,14 +98,14 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
       password: server.password,
       directory: server.directory,
     });
+    setFormOpen(true);
   };
 
   const cancelForm = () => {
     setEditing(null);
     setDraft(emptyServer);
+    setFormOpen(false);
   };
-
-  const isFormOpen = editing !== null || draft.serverUrl !== emptyServer.serverUrl;
 
   const handleSave = () => {
     const normalized = {

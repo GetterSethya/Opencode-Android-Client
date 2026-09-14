@@ -1,0 +1,76 @@
+name: Release APK
+
+# Cut a release by tagging a commit on main:
+#   git tag release-v1.0.0 main && git push origin release-v1.0.0
+# Pushing the tag builds a standalone arm64 APK and publishes it as a
+# GitHub Release asset. The release package id (com.opencode.expo.release)
+# differs from the dev-client build, so both install side by side.
+#
+# The APK is signed with the debug keystore (same as local release builds):
+# fine for personal sideloading, not for Play distribution.
+on:
+  push:
+    tags:
+      - 'release-*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release and upload the APK
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          yes | sdkmanager --licenses > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Prebuild (release variant)
+        run: npx expo prebuild --platform android
+        env:
+          CI: true
+          APP_VARIANT: release
+          APP_VERSION_CODE: ${{ github.run_number }}
+          EXPO_PUBLIC_OPENCODE_URL: ${{ vars.EXPO_PUBLIC_OPENCODE_URL }}
+
+      - name: Assemble release APK (arm64-v8a)
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
+        working-directory: android
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk "opencode-${{ github.ref_name }}-arm64-v8a.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: opencode-*.apk
+
+      - name: Publish GitHub Release
+        run: >
+          gh release create "${{ github.ref_name }}"
+          "opencode-${{ github.ref_name }}-arm64-v8a.apk"
+          --title "${{ github.ref_name }}"
+          --notes "Standalone release APK (arm64). Sideloads alongside the expo-dev-client build."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

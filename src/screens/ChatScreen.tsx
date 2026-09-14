@@ -1,6 +1,12 @@
-import { CheckIcon, CopyIcon, EllipsisVerticalIcon, FileIcon } from 'lucide-react-native';
+import {
+  CheckIcon,
+  CopyIcon,
+  EllipsisVerticalIcon,
+  FileIcon,
+  GitForkIcon,
+} from 'lucide-react-native';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Clipboard, Image, Pressable, Text, View } from 'react-native';
+import { Alert, Clipboard, Image, Pressable, Text, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -42,6 +48,12 @@ import {
 } from '@/components/chat/session-panels';
 import { SettingsForm } from '@/components/chat/settings-form';
 import { SystemBars } from '@/components/system-bars';
+import {
+  NotFoundState,
+  ServerErrorState,
+  classifyError,
+} from '@/components/ui/error-state';
+import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 
 const STARTER_SUGGESTIONS = [
@@ -61,10 +73,16 @@ const MessageItem = memo(function MessageItem({
   message,
   isLast,
   status,
+  onFork,
+  forkTarget,
+  forkDisabled,
 }: {
   message: UIMessage;
   isLast: boolean;
   status: ChatStatus;
+  onFork: (messageId: string) => void;
+  forkTarget: string | null;
+  forkDisabled: boolean;
 }) {
   const colors = useThemeColors();
   const isUser = message.role === 'user';
@@ -80,6 +98,21 @@ const MessageItem = memo(function MessageItem({
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
+  const isForkingThis = forkTarget === message.id;
+  const forkAction = (
+    <MessageAction
+      label="Fork session from here"
+      onPress={() => onFork(message.id)}
+      disabled={forkDisabled}
+    >
+      {isForkingThis ? (
+        <Spinner size={14} color={colors.muted} />
+      ) : (
+        <GitForkIcon size={14} color={colors.muted} />
+      )}
+    </MessageAction>
+  );
 
   return (
     <Message from={message.role}>
@@ -154,7 +187,7 @@ const MessageItem = memo(function MessageItem({
         })}
       </MessageContent>
 
-      {!isUser && responseText.length > 0 ? (
+      {!isUser ? (
         <MessageToolbar>
           <View className="flex-row items-center gap-2">
             {message.model ? (
@@ -167,19 +200,68 @@ const MessageItem = memo(function MessageItem({
             ) : null}
           </View>
           <MessageActions>
-            <MessageAction label="Copy response" onPress={copyResponse}>
-              {copied ? (
-                <CheckIcon size={14} color={colors.success} />
-              ) : (
-                <CopyIcon size={14} color={colors.muted} />
-              )}
-            </MessageAction>
+            {responseText.length > 0 ? (
+              <MessageAction label="Copy response" onPress={copyResponse}>
+                {copied ? (
+                  <CheckIcon size={14} color={colors.success} />
+                ) : (
+                  <CopyIcon size={14} color={colors.muted} />
+                )}
+              </MessageAction>
+            ) : null}
+            {forkAction}
           </MessageActions>
+        </MessageToolbar>
+      ) : null}
+      {isUser ? (
+        <MessageToolbar>
+          <View className="flex-1" />
+          <MessageActions>{forkAction}</MessageActions>
         </MessageToolbar>
       ) : null}
     </Message>
   );
 });
+
+/**
+ * Full-screen 404/500 for view-fatal load failures (initial bootstrap or
+ * session select with nothing to show). Transient failures keep the inline
+ * banner below the conversation instead.
+ */
+function ConversationLoadError({
+  loadError,
+  onRetry,
+  onOpenSessions,
+}: {
+  loadError: string;
+  onRetry: () => void;
+  onOpenSessions: () => void;
+}) {
+  const kind = classifyError(loadError);
+
+  if (kind === 'not-found') {
+    return (
+      <NotFoundState
+        title="Session not found"
+        message="It may have been deleted."
+        onRetry={onRetry}
+        secondaryLabel="Open sessions"
+        onSecondary={onOpenSessions}
+      />
+    );
+  }
+
+  return (
+    <ServerErrorState
+      kind={kind === 'network' ? 'network' : 'server'}
+      title={kind === 'network' ? undefined : 'Could not load session'}
+      message={kind === 'network' ? undefined : loadError}
+      onRetry={onRetry}
+      secondaryLabel="Open sessions"
+      onSecondary={onOpenSessions}
+    />
+  );
+}
 
 export function ChatScreen() {
   const {
@@ -195,7 +277,13 @@ export function ChatScreen() {
     createSession,
     selectSession,
     deleteSession,
+    forkSession,
+    forkTarget,
+    isForking,
+    refreshSessions,
     loadOlderMessages,
+    retryLoad,
+    loadError,
     sendMessage,
     stop,
   } = useOpencodeChat();
@@ -222,12 +310,43 @@ export function ChatScreen() {
 
   const isBusy = status === 'submitted' || status === 'streaming';
   const lastMessageId = messages.at(-1)?.id;
+  const forkDisabled = isBusy || isForking;
+
+  const handleForkMessage = useCallback(
+    (messageId: string) => {
+      Alert.alert('Fork session', 'Create a new session starting from this message?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Fork', onPress: () => void forkSession(messageId) },
+      ]);
+    },
+    [forkSession],
+  );
+
+  const handleForkSession = useCallback(() => {
+    Alert.alert('Fork session', 'Duplicate this session into a new one?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Fork',
+        onPress: () => {
+          setMenuOpen(false);
+          void forkSession();
+        },
+      },
+    ]);
+  }, [forkSession]);
 
   const renderMessage = useCallback(
     ({ item }: { item: UIMessage }) => (
-      <MessageItem message={item} isLast={item.id === lastMessageId} status={status} />
+      <MessageItem
+        message={item}
+        isLast={item.id === lastMessageId}
+        status={status}
+        onFork={handleForkMessage}
+        forkTarget={forkTarget}
+        forkDisabled={forkDisabled}
+      />
     ),
-    [lastMessageId, status],
+    [lastMessageId, status, handleForkMessage, forkTarget, forkDisabled],
   );
 
   const openDrawer = useCallback(() => {
@@ -257,7 +376,13 @@ export function ChatScreen() {
     }
   };
 
-  const statusText = isBusy ? 'Generating...' : isLoading ? 'Loading...' : 'Ready';
+  const statusText = isForking
+    ? 'Forking...'
+    : isBusy
+      ? 'Generating...'
+      : isLoading
+        ? 'Loading...'
+        : 'Ready';
   const modelLabel = activeServer.model?.modelID ?? 'Default model';
 
   const providerCatalog = useProviderCatalog(activeServer, panel === 'context');
@@ -285,6 +410,9 @@ export function ChatScreen() {
         onNewSession={createSession}
         onDeleteSession={deleteSession}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpen={() => {
+          void refreshSessions();
+        }}
       >
         <SafeAreaView
           style={{ flex: 1, backgroundColor: colors.background }}
@@ -311,18 +439,26 @@ export function ChatScreen() {
               </Pressable>
             </View>
 
-            <Conversation
-              messages={messages}
-              onStartReached={hasMoreOlder ? loadOlderMessages : undefined}
-              isLoadingOlder={isLoadingOlder}
-              renderItem={renderMessage}
-            />
+            {loadError && messages.length === 0 && !isLoading ? (
+              <ConversationLoadError
+                loadError={loadError}
+                onRetry={() => void retryLoad()}
+                onOpenSessions={openDrawer}
+              />
+            ) : (
+              <Conversation
+                messages={messages}
+                onStartReached={hasMoreOlder ? loadOlderMessages : undefined}
+                isLoadingOlder={isLoadingOlder}
+                renderItem={renderMessage}
+              />
+            )}
 
             {error ? (
               <Text className="px-4 pb-2 text-xs text-danger">{error}</Text>
             ) : null}
 
-            {messages.length === 0 ? (
+            {messages.length === 0 && !loadError ? (
               <View className="px-4 pb-2">
                 <Suggestions>
                   {STARTER_SUGGESTIONS.map((suggestion) => (
@@ -386,6 +522,9 @@ export function ChatScreen() {
           setMenuOpen(false);
           setPanel(next);
         }}
+        onForkSession={handleForkSession}
+        isForking={isForking}
+        forkDisabled={isBusy}
       />
       <SessionPanelSheet
         panel={panel}

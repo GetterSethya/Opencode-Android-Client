@@ -15,6 +15,8 @@ import type { VcsFileDiff } from '@/chat/opencode';
 import type { ServerConfig } from '@/chat/settings';
 import { useVcsDiff } from '@/chat/use-workspace';
 import { Button } from '@/components/ui/button';
+import { classifyError, ErrorState } from '@/components/ui/error-state';
+import { MAX_RENDERED_LINE_LENGTH } from '@/components/ui/highlighted-code';
 import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
@@ -59,6 +61,10 @@ export function diffBodyLines(patch: string): string[] {
 
 function DiffLine({ line }: { line: string }) {
   const kind = classifyDiffLine(line);
+  // Minified single-line files pack megabytes into one diff line; cap what a
+  // row renders (same bound as highlighted code) so giant rows can't OOM us.
+  const rendered =
+    line.length > MAX_RENDERED_LINE_LENGTH ? `${line.slice(0, MAX_RENDERED_LINE_LENGTH)}…` : line;
   return (
     <View
       style={{ height: DIFF_ROW_HEIGHT }}
@@ -80,7 +86,7 @@ function DiffLine({ line }: { line: string }) {
           kind === 'context' && 'text-foreground',
         )}
       >
-        {line.length > 0 ? line : ' '}
+        {rendered.length > 0 ? rendered : ' '}
       </Text>
     </View>
   );
@@ -133,8 +139,9 @@ export function FullScreenDiffViewer({
     () => lines.reduce((max, line) => Math.max(max, line.length), 0),
     [lines],
   );
-  // Monospace ~7px/char at text-xs; keep at least full width.
-  const contentWidth = Math.max(width, longest * 7 + 24);
+  // Monospace ~7px/char at text-xs; keep at least full width. Rows render
+  // truncated (see DiffLine), so width is computed on the capped length.
+  const contentWidth = Math.max(width, Math.min(longest, MAX_RENDERED_LINE_LENGTH) * 7 + 24);
 
   return (
     <Modal
@@ -289,14 +296,12 @@ export function ReviewPanel({
 
   if (query.error) {
     return (
-      <View className="gap-2 py-4">
-        <Text className="text-sm text-danger">
-          {query.error instanceof Error ? query.error.message : 'Request failed'}
-        </Text>
-        <Button variant="outline" size="sm" onPress={() => query.refetch()}>
-          Retry
-        </Button>
-      </View>
+      <ErrorState
+        compact
+        kind={classifyError(query.error)}
+        message={query.error instanceof Error ? query.error.message : 'Request failed'}
+        onRetry={() => void query.refetch()}
+      />
     );
   }
 

@@ -4,6 +4,7 @@ import {
   CpuIcon,
   FolderOpenIcon,
   GitCompareIcon,
+  GitForkIcon,
   SparklesIcon,
 } from 'lucide-react-native';
 import { useState } from 'react';
@@ -167,12 +168,18 @@ export function SessionMenuSheet({
   modelLabel,
   onSelectModel,
   onOpenPanel,
+  onForkSession,
+  isForking,
+  forkDisabled,
 }: {
   visible: boolean;
   onClose: () => void;
   modelLabel: string;
   onSelectModel: () => void;
   onOpenPanel: (panel: SessionPanel) => void;
+  onForkSession: () => void;
+  isForking: boolean;
+  forkDisabled: boolean;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -226,6 +233,13 @@ export function SessionMenuSheet({
               hint="Browse project"
               onPress={() => onOpenPanel('files')}
             />
+            <MenuRow
+              icon={GitForkIcon}
+              label="Fork session"
+              hint={isForking ? 'Forking…' : 'Duplicate this session'}
+              onPress={onForkSession}
+              disabled={forkDisabled || isForking}
+            />
           </View>
         </View>
       </View>
@@ -238,11 +252,13 @@ function MenuRow({
   label,
   hint,
   onPress,
+  disabled,
 }: {
   icon: typeof SparklesIcon;
   label: string;
   hint?: string;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const colors = useThemeColors();
 
@@ -252,6 +268,8 @@ function MenuRow({
       accessibilityLabel={label}
       className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3.5 active:bg-surface-secondary"
       onPressOut={onPress}
+      disabled={disabled}
+      style={disabled ? { opacity: 0.5 } : undefined}
     >
       <View className="h-9 w-9 items-center justify-center rounded-xl bg-surface-secondary">
         <Icon size={18} color={colors.foreground} />
