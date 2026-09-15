@@ -2,6 +2,7 @@ import { Highlight, themes, type Language, type PrismTheme } from 'prism-react-r
 import { useMemo } from 'react';
 import { Text, View, type TextStyle } from 'react-native';
 
+import { useAdaptiveRenderMode } from '@/chat/adaptive-render';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 
 /** Languages bundled with prism-react-renderer that we map file extensions to. */
@@ -87,6 +88,66 @@ export function HighlightedCode({
 }) {
   const prismTheme = usePrismTheme();
   const colors = useThemeColors();
+  const renderMode = useAdaptiveRenderMode();
+
+  // Fast path used while the surrounding list is flinging: skip Prism entirely
+  // and paint the raw lines. Same layout and line metrics as the highlighted
+  // version, so heights do not shift when it swaps back.
+  if (renderMode === 'light') {
+    const lines = code.split('\n');
+    if (selectable) {
+      return (
+        <View className="flex-row">
+          {showLineNumbers ? (
+            <LineNumberGutter
+              count={lines.length}
+              startLine={startLine}
+              fontSize={fontSize}
+              lineHeight={lineHeight}
+            />
+          ) : null}
+          <Text
+            selectable
+            style={{
+              fontSize,
+              color: colors.foreground,
+              ...(lineHeight ? { lineHeight, includeFontPadding: false } : null),
+            }}
+            className="font-mono"
+          >
+            {code}
+          </Text>
+        </View>
+      );
+    }
+    return (
+      <View>
+        {lines.map((line, lineIndex) => (
+          <View
+            key={lineIndex}
+            className="flex-row"
+            style={lineHeight ? { height: lineHeight } : undefined}
+          >
+            {showLineNumbers ? (
+              <Text
+                style={{ fontSize, color: colors.muted, width: 44, textAlign: 'right' }}
+                className="pr-2 font-mono"
+              >
+                {startLine + lineIndex}
+              </Text>
+            ) : null}
+            <Text
+              numberOfLines={lineHeight ? 1 : undefined}
+              style={{ fontSize, color: colors.foreground }}
+              className="font-mono"
+            >
+              {line.length > 0 ? line : ' '}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
 
   return (
     <Highlight theme={prismTheme} code={code} language={language}>

@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 
 import type { UIMessage } from '@/chat/types';
+import { setAdaptiveRenderMode } from '@/chat/adaptive-render';
 import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,7 @@ export type ConversationProps = {
   className?: string;
   onStartReached?: () => void;
   isLoadingOlder?: boolean;
+  hasMoreOlder?: boolean;
   ListHeaderComponent?: ComponentType<unknown> | ReactElement | null;
   ListFooterComponent?: ComponentType<unknown> | ReactElement | null;
 };
@@ -60,6 +62,7 @@ export function Conversation({
   className,
   onStartReached,
   isLoadingOlder = false,
+  hasMoreOlder = false,
   ListFooterComponent,
 }: ConversationProps) {
   const listRef = useRef<LegendListRef | null>(null);
@@ -89,7 +92,23 @@ export function Conversation({
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
           estimatedItemSize={140}
-          recycleItems={false}
+          // Reusing item components keeps fast scrolling smooth; with it off
+          // LegendList mounts every row from scratch, which drops frames badly
+          // enough that rows appear blank until they finish rendering.
+          recycleItems
+          // LegendList's default pre-render buffer is only 250px. Chat rows are
+          // tall, so a fast fling outruns rendering and rows show up blank
+          // until they catch up. Render further ahead instead.
+          drawDistance={2000}
+          // Rows do markdown + syntax highlighting, which is far too slow to
+          // render from scratch on every row a fast fling brings in. Tell rows
+          // when we're flinging so they can render plain text instead.
+          experimental_adaptiveRender={{
+            enterVelocity: 2,
+            exitVelocity: 0.5,
+            exitDelay: 200,
+            onChange: setAdaptiveRenderMode,
+          }}
           maintainScrollAtEnd
           maintainVisibleContentPosition
           onStartReached={onStartReached}
@@ -100,9 +119,12 @@ export function Conversation({
           style={{ flex: 1 }}
           ListHeaderComponent={
             isLoadingOlder ? (
-              <View className="items-center py-3">
-                <Spinner size={16} />
+              <View className="flex-row items-center justify-center gap-2 py-4">
+                <Spinner size={14} />
+                <Text className="text-xs text-muted">Loading older messages…</Text>
               </View>
+            ) : hasMoreOlder ? (
+              <View className="py-4" />
             ) : null
           }
           ListFooterComponent={ListFooterComponent}

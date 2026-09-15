@@ -5,8 +5,8 @@ import {
   FileIcon,
   GitForkIcon,
 } from 'lucide-react-native';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Clipboard, Image, Pressable, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Clipboard, Image, Pressable, Text, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -52,6 +52,7 @@ import {
   useSessionPanels,
 } from '@/components/chat/session-panels';
 import { NewSessionSheet } from '@/components/chat/new-session-sheet';
+import { useDialog } from '@/components/ui/dialog';
 import { SettingsForm } from '@/components/chat/settings-form';
 import { SystemBars } from '@/components/system-bars';
 import {
@@ -97,13 +98,20 @@ const MessageItem = memo(function MessageItem({
   const isUser = message.role === 'user';
   const isStreaming = isLast && (status === 'streaming' || status === 'submitted');
   const [copied, setCopied] = useState(false);
-  const responseText = message.parts
+
+  // LegendList recycles row components across messages, so transient local
+  // state must be cleared when a row is reused for a different message.
+  useEffect(() => {
+    setCopied(false);
+  }, [message.id]);
+
+  const messageText = message.parts
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n\n');
 
   const copyResponse = () => {
-    Clipboard.setString(responseText);
+    Clipboard.setString(messageText);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -246,7 +254,7 @@ const MessageItem = memo(function MessageItem({
             ) : null}
           </View>
           <MessageActions>
-            {responseText.length > 0 ? (
+            {messageText.length > 0 ? (
               <MessageAction label="Copy response" onPress={copyResponse}>
                 {copied ? (
                   <CheckIcon size={14} color={colors.success} />
@@ -262,7 +270,18 @@ const MessageItem = memo(function MessageItem({
       {isUser ? (
         <MessageToolbar>
           <View className="flex-1" />
-          <MessageActions>{forkAction}</MessageActions>
+          <MessageActions>
+            {messageText.length > 0 ? (
+              <MessageAction label="Copy message" onPress={copyResponse}>
+                {copied ? (
+                  <CheckIcon size={14} color={colors.success} />
+                ) : (
+                  <CopyIcon size={14} color={colors.muted} />
+                )}
+              </MessageAction>
+            ) : null}
+            {forkAction}
+          </MessageActions>
         </MessageToolbar>
       ) : null}
     </Message>
@@ -315,8 +334,6 @@ export function ChatScreen() {
     status,
     error,
     isLoading,
-    isLoadingOlder,
-    hasMoreOlder,
     sessions,
     activeSession,
     activeSessionId,
@@ -327,13 +344,16 @@ export function ChatScreen() {
     forkTarget,
     isForking,
     refreshSessions,
-    loadOlderMessages,
     retryLoad,
     loadError,
+    isLoadingOlder,
+    hasMoreOlder,
+    loadOlderMessages,
     sendMessage,
     stop,
   } = useOpencodeChat();
   const { activeServer } = useChatSettings();
+  const { confirm } = useDialog();
   const colors = useThemeColors();
 
   const [input, setInput] = useState('');
@@ -360,27 +380,30 @@ export function ChatScreen() {
   const forkDisabled = isBusy || isForking;
 
   const handleForkMessage = useCallback(
-    (messageId: string) => {
-      Alert.alert('Fork session', 'Create a new session starting from this message?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Fork', onPress: () => void forkSession(messageId) },
-      ]);
+    async (messageId: string) => {
+      const confirmed = await confirm({
+        title: 'Fork session',
+        message: 'Create a new session starting from this message?',
+        confirmLabel: 'Fork',
+      });
+      if (confirmed) {
+        void forkSession(messageId);
+      }
     },
-    [forkSession],
+    [confirm, forkSession],
   );
 
-  const handleForkSession = useCallback(() => {
-    Alert.alert('Fork session', 'Duplicate this session into a new one?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Fork',
-        onPress: () => {
-          setMenuOpen(false);
-          void forkSession();
-        },
-      },
-    ]);
-  }, [forkSession]);
+  const handleForkSession = useCallback(async () => {
+    const confirmed = await confirm({
+      title: 'Fork session',
+      message: 'Duplicate this session into a new one?',
+      confirmLabel: 'Fork',
+    });
+    if (confirmed) {
+      setMenuOpen(false);
+      void forkSession();
+    }
+  }, [confirm, forkSession]);
 
   const renderMessage = useCallback(
     ({ item }: { item: UIMessage }) => (
@@ -481,7 +504,7 @@ export function ChatScreen() {
               <Pressable
                 accessibilityLabel="Session options"
                 className="h-9 w-9 items-center justify-center rounded-full"
-                onPressOut={() => setMenuOpen(true)}
+                onPress={() => setMenuOpen(true)}
               >
                 <EllipsisVerticalIcon size={20} color={colors.foreground} />
               </Pressable>
@@ -496,9 +519,10 @@ export function ChatScreen() {
             ) : (
               <Conversation
                 messages={messages}
+                renderItem={renderMessage}
                 onStartReached={hasMoreOlder ? loadOlderMessages : undefined}
                 isLoadingOlder={isLoadingOlder}
-                renderItem={renderMessage}
+                hasMoreOlder={hasMoreOlder}
               />
             )}
 

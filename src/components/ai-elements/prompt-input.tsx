@@ -6,11 +6,12 @@ import {
   XIcon,
 } from 'lucide-react-native';
 import { type ReactNode } from 'react';
-import { Alert, Image, Pressable, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, Text, TextInput, View } from 'react-native';
 
 import type { PendingAttachment } from '@/chat/attachments';
 import type { ChatStatus } from '@/chat/types';
 import { Button } from '@/components/ui/button';
+import { useDialog } from '@/components/ui/dialog';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
@@ -46,15 +47,18 @@ export function PromptInput({
   footer,
 }: PromptInputProps) {
   const colors = useThemeColors();
+  const { choose } = useDialog();
   const isBusy = status === 'submitted' || status === 'streaming';
   const canSubmit = (value.trim().length > 0 || attachments.length > 0) && !disabled;
 
-  const handleAdd = () => {
-    Alert.alert('Add attachment', undefined, [
-      { text: 'Photo', onPress: () => onAddImage?.() },
-      { text: 'Document', onPress: () => onAddFile?.() },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const handleAdd = async () => {
+    await choose({
+      title: 'Add attachment',
+      actions: [
+        { label: 'Photo', onPress: () => onAddImage?.() },
+        { label: 'Document', onPress: () => onAddFile?.() },
+      ],
+    });
   };
 
   return (

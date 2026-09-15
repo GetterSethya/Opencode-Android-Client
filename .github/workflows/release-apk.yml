@@ -63,6 +63,8 @@ jobs:
           APP_VARIANT: release
           APP_VERSION: ${{ steps.appversion.outputs.version }}
           APP_VERSION_CODE: ${{ github.run_number }}
+          EXPO_PUBLIC_APP_VERSION: ${{ steps.appversion.outputs.version }}
+          EXPO_PUBLIC_APP_VERSION_CODE: ${{ github.run_number }}
           EXPO_PUBLIC_OPENCODE_URL: ${{ vars.EXPO_PUBLIC_OPENCODE_URL }}
 
       - name: Assemble release APK (arm64-v8a)

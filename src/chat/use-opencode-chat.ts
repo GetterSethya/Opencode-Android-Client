@@ -168,12 +168,13 @@ function sortSessions(sessions: OpencodeSession[]) {
   return [...sessions].sort((a, b) => b.time.updated - a.time.updated);
 }
 
-const INITIAL_MESSAGE_LIMIT = 10;
-const MESSAGE_PAGE_SIZE = 10;
-
-const INITIAL_HISTORY_LIMIT = 10;
-const HISTORY_PAGE_SIZE = 10;
-const MAX_HISTORY_LIMIT = 200;
+/**
+ * Pagination sizes. Long histories are expensive to fetch and derive in one
+ * go, so the newest page loads first and older pages are pulled in on scroll,
+ * with a spinner shown while a page is in flight.
+ */
+const INITIAL_HISTORY_LIMIT = 60;
+const MESSAGE_PAGE_SIZE = 60;
 
 /** Sentinel fork target for a whole-session fork (no message ID). */
 export const FORK_WHOLE_SESSION = '__session__';
@@ -238,8 +239,6 @@ export function useOpencodeChat() {
       setState({});
       setActiveSessionId(null);
       activeSessionIdRef.current = null;
-      setHistoryLimit(INITIAL_HISTORY_LIMIT);
-      setHasMoreOlder(false);
       setIsLoading(true);
 
       try {
@@ -258,6 +257,7 @@ export function useOpencodeChat() {
           setState(buildState(history));
           setActiveSessionId(sorted[0].id);
           activeSessionIdRef.current = sorted[0].id;
+          setHistoryLimit(INITIAL_HISTORY_LIMIT);
           setHasMoreOlder(history.length >= INITIAL_HISTORY_LIMIT);
         } else {
           const session = await client.createSession('opencode mobile');
@@ -417,6 +417,11 @@ export function useOpencodeChat() {
     };
   }, [client, settingsReady, loadSession, queryClient]);
 
+  /**
+   * Pulls the next (older) page in. Guarded so a fling to the top cannot fire
+   * overlapping requests, and paused while a response is streaming (the list
+   * is jumping around and the user is reading the newest messages).
+   */
   const loadOlderMessages = useCallback(async () => {
     const sid = activeSessionIdRef.current;
     if (!sid || !hasMoreOlder || isLoadingOlder) {
@@ -470,8 +475,6 @@ export function useOpencodeChat() {
           setState({});
           setActiveSessionId(session.id);
           activeSessionIdRef.current = session.id;
-          setHistoryLimit(INITIAL_HISTORY_LIMIT);
-          setHasMoreOlder(false);
           setStatus('ready');
           setError(null);
           setLoadError(null);
@@ -481,8 +484,6 @@ export function useOpencodeChat() {
         setState({});
         setActiveSessionId(session.id);
         activeSessionIdRef.current = session.id;
-        setHistoryLimit(INITIAL_HISTORY_LIMIT);
-        setHasMoreOlder(false);
         setStatus('ready');
         setError(null);
         setLoadError(null);
@@ -696,8 +697,8 @@ export function useOpencodeChat() {
     deleteSession,
     forkSession,
     refreshSessions,
-    loadOlderMessages,
     retryLoad,
+    loadOlderMessages,
     sendMessage,
     stop,
   };

@@ -1,7 +1,6 @@
 import { ExternalLinkIcon, PlusIcon, Trash2Icon } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Linking,
   Pressable,
   Text,
@@ -29,6 +28,7 @@ import type {
   ProviderOAuthAuthorization,
 } from '@/chat/opencode';
 import { Button } from '@/components/ui/button';
+import { useDialog } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
@@ -81,6 +81,7 @@ export function ConnectFlow({
   onDone: () => void;
 }) {
   const colors = useThemeColors();
+  const { notify } = useDialog();
   const authMethods = useProviderAuthMethods(server, true);
   const catalog = useProviderCatalog(server, true);
   const setAuth = useSetProviderAuth();
@@ -123,7 +124,7 @@ export function ConnectFlow({
   const method = methodIndex !== undefined ? methods[methodIndex] : undefined;
 
   const finishConnected = () => {
-    Alert.alert('Connected', `"${displayName}" was connected.`);
+    void notify({ title: 'Connected', message: `"${displayName}" was connected.` });
     onDone();
   };
 
@@ -205,13 +206,13 @@ export function ConnectFlow({
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert('Cannot open browser', url);
+      void notify({ title: 'Cannot open browser', message: url });
     }
   };
 
   const submitApiKey = async () => {
     if (!apiKey.trim()) {
-      Alert.alert('API key required', 'Enter the API key to continue.');
+      void notify({ title: 'API key required', message: 'Enter the API key to continue.' });
       return;
     }
     setBusy(true);
@@ -256,7 +257,7 @@ export function ConnectFlow({
 
   const submitCode = async () => {
     if (!code.trim() || methodIndex === undefined) {
-      Alert.alert('Code required', 'Enter the authorization code to continue.');
+      void notify({ title: 'Code required', message: 'Enter the authorization code to continue.' });
       return;
     }
     setBusy(true);
@@ -269,7 +270,7 @@ export function ConnectFlow({
       });
       finishConnected();
     } catch (err) {
-      Alert.alert('Authorization failed', errorMessage(err));
+      void notify({ title: 'Authorization failed', message: errorMessage(err) });
     } finally {
       setBusy(false);
     }
@@ -516,6 +517,7 @@ export function CustomProviderForm({
   onDone: () => void;
 }) {
   const colors = useThemeColors();
+  const { notify } = useDialog();
   const catalog = useProviderCatalog(server, true);
   const globalConfig = useGlobalConfig(server, true);
   const save = useSaveCustomProvider();
@@ -627,10 +629,10 @@ export function CustomProviderForm({
           models: modelConfig,
         },
       });
-      Alert.alert('Connected', `"${trimmedName}" was connected.`);
+      void notify({ title: 'Connected', message: `"${trimmedName}" was connected.` });
       onDone();
     } catch (err) {
-      Alert.alert('Save failed', err instanceof Error ? err.message : 'Request failed');
+      void notify({ title: 'Save failed', message: err instanceof Error ? err.message : 'Request failed' });
     } finally {
       setBusy(false);
     }

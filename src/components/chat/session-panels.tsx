@@ -267,7 +267,7 @@ function MenuRow({
       accessibilityRole="button"
       accessibilityLabel={label}
       className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3.5 active:bg-surface-secondary"
-      onPressOut={onPress}
+      onPress={onPress}
       disabled={disabled}
       style={disabled ? { opacity: 0.5 } : undefined}
     >

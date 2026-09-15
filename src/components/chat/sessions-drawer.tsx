@@ -19,7 +19,6 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  Alert,
   BackHandler,
   DrawerLayoutAndroid,
   Pressable,
@@ -31,6 +30,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { OpencodeSession } from '@/chat/opencode';
+import { useDialog } from '@/components/ui/dialog';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
@@ -94,6 +94,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
   ) {
     const insets = useSafeAreaInsets();
     const colors = useThemeColors();
+    const { confirm } = useDialog();
     const drawerRef = useRef<DrawerLayoutAndroid>(null);
     const [query, setQuery] = useState('');
     const [showAll, setShowAll] = useState(false);
@@ -137,17 +138,18 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
     const visibleSessions = showAll ? filtered : filtered.slice(0, RECENT_LIMIT);
 
     const confirmDelete = useCallback(
-      (session: OpencodeSession) => {
-        Alert.alert('Delete session', `Delete "${session.title}"?`, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => onDeleteSession(session.id),
-          },
-        ]);
+      async (session: OpencodeSession) => {
+        const confirmed = await confirm({
+          title: 'Delete session',
+          message: `Delete "${session.title}"? This cannot be undone.`,
+          confirmLabel: 'Delete',
+          destructive: true,
+        });
+        if (confirmed) {
+          onDeleteSession(session.id);
+        }
       },
-      [onDeleteSession],
+      [confirm, onDeleteSession],
     );
 
     const renderNavigationView = useCallback(
@@ -268,7 +270,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
 
           <Pressable
             className="mx-3 flex-row items-center gap-2 rounded-xl border border-border px-3 py-3"
-            onPressOut={() => {
+            onPress={() => {
               close();
               onOpenSettings();
             }}
@@ -331,7 +333,7 @@ export function HamburgerButton({ onPress }: { onPress: () => void }) {
     <Pressable
       accessibilityLabel="Open sessions"
       className="h-9 w-9 items-center justify-center rounded-full"
-      onPressOut={onPress}
+      onPress={onPress}
     >
       <MenuIcon size={22} color={colors.foreground} />
     </Pressable>

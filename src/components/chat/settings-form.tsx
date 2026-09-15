@@ -11,7 +11,6 @@ import {
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -24,6 +23,8 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useChatSettings, type ServerConfig, type ThemePreference } from '@/chat/settings';
+import { appVersionLabel } from '@/chat/app-info';
+import { useDialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useThemeColors } from '@/hooks/use-theme-colors';
@@ -71,6 +72,7 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
     removeServer,
     setActiveServer,
   } = useChatSettings();
+  const { confirm } = useDialog();
 
   const [editing, setEditing] = useState<ServerConfig | null>(null);
   const [draft, setDraft] = useState<Omit<ServerConfig, 'id'>>(emptyServer);
@@ -125,11 +127,16 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
     onClose();
   };
 
-  const confirmRemove = (server: ServerConfig) => {
-    Alert.alert('Delete server', `Remove "${server.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => removeServer(server.id) },
-    ]);
+  const confirmRemove = async (server: ServerConfig) => {
+    const confirmed = await confirm({
+      title: 'Delete server',
+      message: `Remove "${server.name}"?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (confirmed) {
+      removeServer(server.id);
+    }
   };
 
   return (
@@ -324,6 +331,9 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
                 </Pressable>
               </ScrollView>
             )}
+            <Text className="pt-3 text-center text-xs text-muted">
+              opencode {appVersionLabel()}
+            </Text>
           </View>
         </KeyboardAvoidingView>
       </View>

@@ -1,7 +1,8 @@
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { useMemo } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
+import { useAdaptiveRenderMode } from '@/chat/adaptive-render';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
@@ -52,6 +53,7 @@ function buildStyles(dark: boolean) {
 export function Response({ children, className }: ResponseProps) {
   const { dark } = useThemeColors();
   const markdownStyles = useMemo(() => buildStyles(dark), [dark]);
+  const mode = useAdaptiveRenderMode();
 
   const rules = useMemo(
     () => ({
@@ -64,6 +66,22 @@ export function Response({ children, className }: ResponseProps) {
     }),
     [],
   );
+
+  // While the list is flinging, skip markdown parsing (and the syntax
+  // highlighting it triggers) entirely — it is the dominant per-row cost and
+  // is why rows went blank before they could render. Plain text keeps roughly
+  // the same height, so the list does not jump when the full version returns.
+  if (mode === 'light') {
+    return (
+      <View className={cn('w-full', className)}>
+        <Text
+          style={{ color: dark ? '#fafafa' : '#18181b', fontSize: 15, lineHeight: 23 }}
+        >
+          {children}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View className={cn('w-full', className)}>

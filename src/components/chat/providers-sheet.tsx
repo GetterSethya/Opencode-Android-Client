@@ -7,7 +7,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -20,6 +19,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useChatSettings, type ServerConfig } from '@/chat/settings';
+import { useDialog } from '@/components/ui/dialog';
 import {
   POPULAR_PROVIDER_IDS,
   useDisconnectProvider,
@@ -128,6 +128,7 @@ function ProvidersMain({
   const disconnect = useDisconnectProvider();
   const updateConfig = useUpdateGlobalConfig();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { confirm, notify } = useDialog();
 
   const visibleConnected = useMemo(
     () =>
@@ -147,33 +148,33 @@ function ProvidersMain({
       .sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
   }, [unconnected, visibleConnected]);
 
-  const handleDisconnect = (item: ProviderListItem) => {
-    Alert.alert('Disconnect provider', `Disconnect "${item.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Disconnect',
-        style: 'destructive',
-        onPress: async () => {
-          setBusyId(item.id);
-          try {
-            await disconnect.mutateAsync({ server, providerID: item.id });
-            if (isConfigCustomProvider(item.id, globalConfig.data)) {
-              const before = globalConfig.data?.disabled_providers ?? [];
-              const next = before.includes(item.id) ? before : [...before, item.id];
-              await updateConfig.mutateAsync({ server, patch: { disabled_providers: next } });
-            }
-            Alert.alert('Disconnected', `"${item.name}" was disconnected.`);
-          } catch (err) {
-            Alert.alert(
-              'Disconnect failed',
-              err instanceof Error ? err.message : 'Request failed',
-            );
-          } finally {
-            setBusyId(null);
-          }
-        },
-      },
-    ]);
+  const handleDisconnect = async (item: ProviderListItem) => {
+    const confirmed = await confirm({
+      title: 'Disconnect provider',
+      message: `Disconnect "${item.name}"?`,
+      confirmLabel: 'Disconnect',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    setBusyId(item.id);
+    try {
+      await disconnect.mutateAsync({ server, providerID: item.id });
+      if (isConfigCustomProvider(item.id, globalConfig.data)) {
+        const before = globalConfig.data?.disabled_providers ?? [];
+        const next = before.includes(item.id) ? before : [...before, item.id];
+        await updateConfig.mutateAsync({ server, patch: { disabled_providers: next } });
+      }
+      await notify({ title: 'Disconnected', message: `"${item.name}" was disconnected.` });
+    } catch (err) {
+      await notify({
+        title: 'Disconnect failed',
+        message: err instanceof Error ? err.message : 'Request failed',
+      });
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
