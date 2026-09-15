@@ -332,7 +332,7 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
               </ScrollView>
             )}
             <Text className="pt-3 text-center text-xs text-muted">
-              opencode {appVersionLabel()}
+              opencode android client {appVersionLabel()}
             </Text>
           </View>
         </KeyboardAvoidingView>

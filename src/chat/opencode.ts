@@ -100,7 +100,26 @@ export type OpencodeSession = {
   /** Project folder this session belongs to (absolute path on the server). */
   directory?: string;
   projectID?: string;
+  /** Present once the session has been shared (POST .../share). */
+  share?: { url: string };
+  /** Set on forked/subagent sessions; points back to the spawning session. */
+  parentID?: string;
+  /** Agent currently driving the session (e.g. "build", "plan"). */
+  agent?: string;
 };
+
+/** A tool permission request waiting for the user (permission.asked). */
+export type OpencodePermissionRequest = {
+  id: string;
+  sessionID: string;
+  permission: string;
+  patterns: string[];
+  metadata?: Record<string, unknown>;
+  always?: string[];
+  tool?: { messageID: string; callID: string };
+};
+
+export type PermissionReply = 'once' | 'always' | 'reject';
 
 /** A project folder the server knows about. */
 export type OpencodeProject = {
@@ -255,6 +274,23 @@ export type FileContent = {
   mimeType?: string;
 };
 
+/** A slash command registered on the server (built-in, project, or global). */
+export type OpencodeCommand = {
+  name: string;
+  description: string;
+  source?: string;
+  template?: string;
+  agent?: string | null;
+  model?: string | null;
+  subtask?: boolean | null;
+};
+
+/** Response envelope of POST /session/:id/command. */
+export type OpencodeCommandResult = {
+  info: OpencodeMessageInfo;
+  parts: OpencodePart[];
+};
+
 export type OpencodeTextPartInput = {
   type: 'text';
   text: string;
@@ -269,12 +305,54 @@ export type OpencodeFilePartInput = {
 
 export type OpencodePartInput = OpencodeTextPartInput | OpencodeFilePartInput;
 
+/** A question the assistant asked via the `question` tool (question.asked). */
+export type OpencodeQuestion = {
+  question: string;
+  header?: string;
+  options: { label: string; description?: string }[];
+  multiple?: boolean;
+  custom?: boolean;
+};
+
 export type OpencodeEvent =
   | { type: 'message.updated'; properties: { info: OpencodeMessageInfo } }
   | { type: 'message.part.updated'; properties: { part: OpencodePart; delta?: string } }
   | { type: 'message.part.removed'; properties: { messageID: string; partID: string } }
   | { type: 'session.idle'; properties: { sessionID: string } }
   | { type: 'session.status'; properties: { sessionID: string; status: { type: string } } }
+  | {
+      type: 'question.asked';
+      properties: {
+        id: string;
+        sessionID: string;
+        questions: OpencodeQuestion[];
+        tool: { messageID: string; callID: string };
+      };
+    }
+  | {
+      type: 'question.replied';
+      properties: { sessionID: string; requestID: string; answers: string[][] };
+    }
+  | {
+      type: 'question.rejected';
+      properties: { sessionID: string; requestID: string };
+    }
+  | {
+      type: 'permission.asked';
+      properties: {
+        id: string;
+        sessionID: string;
+        permission: string;
+        patterns: string[];
+        metadata?: Record<string, unknown>;
+        always?: string[];
+        tool?: { messageID: string; callID: string };
+      };
+    }
+  | {
+      type: 'permission.replied';
+      properties: { sessionID: string; requestID: string; reply: PermissionReply };
+    }
   | { type: string; properties: Record<string, unknown> };
 
 export type OpencodeClientOptions = {
@@ -592,6 +670,38 @@ export class OpencodeClient {
     );
   }
 
+  /** Slash commands registered on the server for the current directory. */
+  listCommands() {
+    return this.request<OpencodeCommand[]>('/command');
+  }
+
+  /**
+   * Execute a slash command in a session. Mirrors promptAsync: the caller
+   * supplies the user message ID so the optimistic message is reconciled by
+   * the SSE stream, and the assistant reply streams back the same way.
+   */
+  executeCommand(
+    sessionId: string,
+    input: {
+      messageID?: string;
+      command: string;
+      args: string;
+      model?: string;
+      parts?: OpencodePartInput[];
+    },
+  ) {
+    return this.request<OpencodeCommandResult>(`/session/${sessionId}/command`, {
+      method: 'POST',
+      body: JSON.stringify({
+        messageID: input.messageID,
+        command: input.command,
+        arguments: input.args,
+        model: input.model,
+        parts: input.parts,
+      }),
+    });
+  }
+
   updateGlobalConfig(patch: Partial<GlobalConfig>) {
     return this.request<GlobalConfig>('/global/config', {
       method: 'PATCH',
@@ -618,5 +728,106 @@ export class OpencodeClient {
 
   abort(sessionId: string) {
     return this.request<boolean>(`/session/${sessionId}/abort`, { method: 'POST' });
+  }
+
+  /**
+   * Answer a pending `question` tool request. The execution resumes
+   * server-side; `answers` holds the selected labels (plus any custom text)
+   * per question, in order.
+   */
+  replyToQuestion(requestID: string, answers: string[][]) {
+    return this.request<boolean>(`/question/${requestID}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    });
+  }
+
+  rejectQuestion(requestID: string) {
+    return this.request<boolean>(`/question/${requestID}/reject`, { method: 'POST' });
+  }
+
+  /** Pending tool permission requests (e.g. a bash call awaiting approval). */
+  listPermissions() {
+    return this.request<OpencodePermissionRequest[]>('/permission');
+  }
+
+  replyToPermission(requestID: string, reply: PermissionReply) {
+    return this.request<boolean>(`/permission/${requestID}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ reply }),
+    });
+  }
+
+  renameSession(sessionId: string, title: string) {
+    return this.request<OpencodeSession>(`/session/${sessionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  /**
+   * Undo back to (and including) a message, usually the last user message.
+   * The server truncates the history; callers reload the session after.
+   */
+  revertSession(sessionId: string, messageID: string) {
+    return this.request<OpencodeSession>(`/session/${sessionId}/revert`, {
+      method: 'POST',
+      body: JSON.stringify({ messageID }),
+    });
+  }
+
+  unrevertSession(sessionId: string) {
+    return this.request<OpencodeSession>(`/session/${sessionId}/unrevert`, { method: 'POST' });
+  }
+
+  deleteMessage(sessionId: string, messageID: string) {
+    return this.request<boolean>(`/session/${sessionId}/message/${messageID}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /** Sessions spawned from this one (forks, subagent runs). */
+  listSessionChildren(sessionId: string) {
+    return this.request<OpencodeSession[]>(`/session/${sessionId}/children`);
+  }
+
+  shareSession(sessionId: string) {
+    return this.request<OpencodeSession>(`/session/${sessionId}/share`, { method: 'POST' });
+  }
+
+  unshareSession(sessionId: string) {
+    return this.request<OpencodeSession>(`/session/${sessionId}/share`, { method: 'DELETE' });
+  }
+
+  summarizeSession(sessionId: string, model: { providerID: string; modelID: string }) {
+    return this.request<boolean>(`/session/${sessionId}/summarize`, {
+      method: 'POST',
+      body: JSON.stringify({ providerID: model.providerID, modelID: model.modelID }),
+    });
+  }
+
+  /**
+   * Execute a shell command in the session context. Mirrors executeCommand:
+   * the caller supplies the user message ID so the optimistic message is
+   * reconciled by the SSE stream, and the result streams back the same way.
+   */
+  executeShell(
+    sessionId: string,
+    input: {
+      messageID?: string;
+      agent: string;
+      command: string;
+      model?: { providerID: string; modelID: string };
+    },
+  ) {
+    return this.request<OpencodeCommandResult>(`/session/${sessionId}/shell`, {
+      method: 'POST',
+      body: JSON.stringify({
+        messageID: input.messageID,
+        agent: input.agent,
+        command: input.command,
+        model: input.model,
+      }),
+    });
   }
 }

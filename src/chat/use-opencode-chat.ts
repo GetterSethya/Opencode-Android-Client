@@ -10,6 +10,8 @@ import {
   type OpencodeMessage,
   type OpencodeMessageInfo,
   type OpencodePart,
+  type OpencodeQuestion,
+  type PermissionReply,
   type OpencodePartInput,
   type OpencodeSession,
   type OpencodeToolState,
@@ -90,6 +92,52 @@ function buildState(messages: OpencodeMessage[]): MessageState {
     };
   }
   return next;
+}
+
+function optimisticMessageId() {
+  return `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildOptimisticMessage(
+  sid: string,
+  id: string,
+  created: number,
+  text: string,
+  attachments: PendingAttachment[],
+): MessageRecord {
+  const parts: MessageRecord['parts'] = {};
+  if (text) {
+    parts[`optimistic-${id}-text`] = {
+      id: `optimistic-${id}-text`,
+      sessionID: sid,
+      messageID: id,
+      type: 'text',
+      text,
+    };
+  }
+  for (const attachment of attachments) {
+    parts[`optimistic-${id}-${attachment.id}`] = {
+      id: `optimistic-${id}-${attachment.id}`,
+      sessionID: sid,
+      messageID: id,
+      type: 'file',
+      mime: attachment.mime,
+      filename: attachment.name,
+      url: attachment.uri,
+    };
+  }
+  return {
+    info: { id, sessionID: sid, role: 'user', time: { created } },
+    parts,
+  };
+}
+
+async function buildFileParts(attachments: PendingAttachment[]): Promise<OpencodePartInput[]> {
+  const parts: OpencodePartInput[] = [];
+  for (const attachment of attachments) {
+    parts.push(await toFilePart(attachment));
+  }
+  return parts;
 }
 
 function applyEvent(state: MessageState, event: OpencodeEvent, sessionId: string): MessageState {
@@ -179,6 +227,50 @@ const MESSAGE_PAGE_SIZE = 60;
 /** Sentinel fork target for a whole-session fork (no message ID). */
 export const FORK_WHOLE_SESSION = '__session__';
 
+/**
+ * A `question` tool request waiting for the user. The paused run resumes
+ * when the answers are posted to POST /question/:id/reply.
+ */
+export type PendingQuestion = {
+  requestID: string;
+  sessionID: string;
+  messageID: string;
+  callID: string;
+  /** Authoritative questions from the event, used if the part input lags. */
+  questions: OpencodeQuestion[];
+};
+
+/**
+ * A tool permission request waiting for the user (e.g. a bash call the
+ * server policy wants approved). Replying resumes or stops the run.
+ */
+export type PendingPermission = {
+  requestID: string;
+  sessionID: string;
+  permission: string;
+  patterns: string[];
+  messageID?: string;
+  callID?: string;
+};
+
+/**
+ * A message composed while a run was in flight. It is sent automatically,
+ * in order, once the session goes idle again.
+ */
+export type QueuedMessage = {
+  id: string;
+  sessionID: string;
+  kind: 'message' | 'command' | 'shell';
+  text: string;
+  command?: string;
+  args?: string;
+  attachments: PendingAttachment[];
+};
+
+function queuedMessageId() {
+  return `q_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function useOpencodeChat() {
   const queryClient = useQueryClient();
   const { activeServer, ready: settingsReady, updateServer } = useChatSettings();
@@ -209,6 +301,18 @@ export function useOpencodeChat() {
   // Message ID being forked, or FORK_WHOLE_SESSION for a full-session fork.
   const [forkTarget, setForkTarget] = useState<string | null>(null);
   const forkingRef = useRef(false);
+  // `question` tool requests still waiting for an answer, keyed by request ID.
+  const [pendingQuestionMap, setPendingQuestionMap] = useState<Record<string, PendingQuestion>>(
+    {},
+  );
+  // Tool permission requests still waiting for a reply, keyed by request ID.
+  const [pendingPermissionMap, setPendingPermissionMap] = useState<
+    Record<string, PendingPermission>
+  >({});
+  // Messages composed while a run was in flight; a ref mirror drives the
+  // auto-flush so the effect never acts on a stale closure.
+  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const messageQueueRef = useRef<QueuedMessage[]>([]);
 
   const activeSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -237,6 +341,10 @@ export function useOpencodeChat() {
       setLoadError(null);
       setStatus('ready');
       setState({});
+      setPendingQuestionMap({});
+      setPendingPermissionMap({});
+      messageQueueRef.current = [];
+      setMessageQueue([]);
       setActiveSessionId(null);
       activeSessionIdRef.current = null;
       setIsLoading(true);
@@ -387,6 +495,86 @@ export function useOpencodeChat() {
         void queryClient.invalidateQueries({ queryKey: ['provider-auth-methods'] });
         void queryClient.invalidateQueries({ queryKey: ['global-config'] });
         void queryClient.invalidateQueries({ queryKey: ['opencode-providers'] });
+        return;
+      }
+
+      // The `question` tool pauses the run until the user answers. Track
+      // pending requests so the tool renders tappable options; answering
+      // posts to POST /question/:id/reply and the run resumes server-side.
+      if (parsed.type === 'question.asked') {
+        const properties = parsed.properties as {
+          id: string;
+          sessionID: string;
+          questions: OpencodeQuestion[];
+          tool: { messageID: string; callID: string };
+        };
+        setPendingQuestionMap((prev) => ({
+          ...prev,
+          [properties.id]: {
+            requestID: properties.id,
+            sessionID: properties.sessionID,
+            messageID: properties.tool.messageID,
+            callID: properties.tool.callID,
+            questions: properties.questions ?? [],
+          },
+        }));
+        return;
+      }
+
+      if (parsed.type === 'question.replied' || parsed.type === 'question.rejected') {
+        const requestID = (parsed.properties as { requestID?: string }).requestID;
+        if (!requestID) {
+          return;
+        }
+        setPendingQuestionMap((prev) => {
+          if (!(requestID in prev)) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[requestID];
+          return next;
+        });
+        return;
+      }
+
+      // Tool permission requests pause the run until approved or rejected.
+      // They carry the tool call they belong to, so the card renders under
+      // the matching tool part (same pattern as question.asked).
+      if (parsed.type === 'permission.asked') {
+        const properties = parsed.properties as {
+          id: string;
+          sessionID: string;
+          permission: string;
+          patterns: string[];
+          tool?: { messageID: string; callID: string };
+        };
+        setPendingPermissionMap((prev) => ({
+          ...prev,
+          [properties.id]: {
+            requestID: properties.id,
+            sessionID: properties.sessionID,
+            permission: properties.permission,
+            patterns: properties.patterns ?? [],
+            messageID: properties.tool?.messageID,
+            callID: properties.tool?.callID,
+          },
+        }));
+        return;
+      }
+
+      if (parsed.type === 'permission.replied') {
+        const requestID = (parsed.properties as { requestID?: string }).requestID;
+        if (!requestID) {
+          return;
+        }
+        setPendingPermissionMap((prev) => {
+          if (!(requestID in prev)) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[requestID];
+          return next;
+        });
         return;
       }
 
@@ -575,36 +763,11 @@ export function useOpencodeChat() {
       }
 
       const created = Date.now();
-      const id = `msg_${created.toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-
-      const optimisticParts: MessageRecord['parts'] = {};
-      if (trimmed) {
-        optimisticParts[`optimistic-${id}-text`] = {
-          id: `optimistic-${id}-text`,
-          sessionID: sid,
-          messageID: id,
-          type: 'text',
-          text: trimmed,
-        };
-      }
-      for (const attachment of attachments) {
-        optimisticParts[`optimistic-${id}-${attachment.id}`] = {
-          id: `optimistic-${id}-${attachment.id}`,
-          sessionID: sid,
-          messageID: id,
-          type: 'file',
-          mime: attachment.mime,
-          filename: attachment.name,
-          url: attachment.uri,
-        };
-      }
+      const id = optimisticMessageId();
 
       setState((prev) => ({
         ...prev,
-        [id]: {
-          info: { id, sessionID: sid, role: 'user', time: { created } },
-          parts: optimisticParts,
-        },
+        [id]: buildOptimisticMessage(sid, id, created, trimmed, attachments),
       }));
       setStatus('submitted');
       setError(null);
@@ -615,10 +778,52 @@ export function useOpencodeChat() {
         if (trimmed) {
           parts.push({ type: 'text', text: trimmed });
         }
-        for (const attachment of attachments) {
-          parts.push(await toFilePart(attachment));
-        }
+        parts.push(...(await buildFileParts(attachments)));
         await client.promptAsync(sid, parts, id, activeServer.model);
+        setStatus('streaming');
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        setStatus('error');
+      }
+    },
+    [client, activeServer.model],
+  );
+
+  /**
+   * Execute a slash command (`/name args`) via POST /session/:id/command.
+   * The confirmed text is derived server-side from the command template; the
+   * optimistic message shows the raw `/name args` until SSE reconciles it,
+   * exactly like promptAsync.
+   */
+  const sendCommand = useCallback(
+    async (command: string, args: string, attachments: PendingAttachment[] = []) => {
+      const sid = activeSessionIdRef.current;
+      if (!sid || !command) {
+        return;
+      }
+      const text = `/${command}${args ? ` ${args}` : ''}`;
+
+      const created = Date.now();
+      const id = optimisticMessageId();
+
+      setState((prev) => ({
+        ...prev,
+        [id]: buildOptimisticMessage(sid, id, created, text, attachments),
+      }));
+      setStatus('submitted');
+      setError(null);
+      setLoadError(null);
+
+      try {
+        const fileParts = await buildFileParts(attachments);
+        const model = activeServer.model;
+        await client.executeCommand(sid, {
+          messageID: id,
+          command,
+          args,
+          model: model ? `${model.providerID}/${model.modelID}` : undefined,
+          parts: fileParts.length > 0 ? fileParts : undefined,
+        });
         setStatus('streaming');
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -673,6 +878,291 @@ export function useOpencodeChat() {
     setStatus('ready');
   }, [client]);
 
+  /**
+   * Execute a shell command in the session (`!cmd`, TUI parity) via
+   * POST /session/:id/shell. Optimistic display mirrors sendCommand; the
+   * result streams back over SSE and the bash renderer shows it.
+   */
+  const sendShell = useCallback(
+    async (command: string) => {
+      const sid = activeSessionIdRef.current;
+      const trimmed = command.trim();
+      if (!sid || !trimmed) {
+        return;
+      }
+      const agent =
+        sessionsRef.current.find((session) => session.id === sid)?.agent || 'build';
+
+      const created = Date.now();
+      const id = optimisticMessageId();
+
+      setState((prev) => ({
+        ...prev,
+        [id]: buildOptimisticMessage(sid, id, created, trimmed, []),
+      }));
+      setStatus('submitted');
+      setError(null);
+      setLoadError(null);
+
+      try {
+        const model = activeServer.model;
+        await client.executeShell(sid, {
+          messageID: id,
+          agent,
+          command: trimmed,
+          model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
+        });
+        setStatus('streaming');
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        setStatus('error');
+      }
+    },
+    [client, activeServer.model],
+  );
+
+  /**
+   * Submit answers to a pending `question` tool request. The paused run
+   * resumes server-side; the pending marker clears on `question.replied`.
+   * Throws on failure so the caller can show the error inline.
+   */
+  const answerQuestion = useCallback(
+    async (requestID: string, answers: string[][]) => {
+      await client.replyToQuestion(requestID, answers);
+    },
+    [client],
+  );
+
+  const pendingQuestions = useMemo(
+    () => Object.values(pendingQuestionMap).filter((entry) => entry.sessionID === activeSessionId),
+    [pendingQuestionMap, activeSessionId],
+  );
+
+  const pendingPermissions = useMemo(
+    () =>
+      Object.values(pendingPermissionMap).filter((entry) => entry.sessionID === activeSessionId),
+    [pendingPermissionMap, activeSessionId],
+  );
+
+  /**
+   * Reply to a pending tool permission request. Throws on failure so the
+   * caller can show the error inline next to the buttons.
+   */
+  const replyToPermission = useCallback(
+    async (requestID: string, reply: PermissionReply) => {
+      await client.replyToPermission(requestID, reply);
+    },
+    [client],
+  );
+
+  /** Dismiss a pending `question` without answering; the run is cancelled. */
+  const rejectQuestion = useCallback(
+    async (requestID: string) => {
+      await client.rejectQuestion(requestID);
+    },
+    [client],
+  );
+
+  const renameSession = useCallback(
+    async (sessionId: string, title: string) => {
+      const trimmed = title.trim();
+      if (!sessionId || !trimmed) {
+        return;
+      }
+      try {
+        const session = await client.renameSession(sessionId, trimmed);
+        setSessions((prev) => sortSessions([session, ...prev.filter((s) => s.id !== session.id)]));
+        setError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [client],
+  );
+
+  /**
+   * Undo back to (and including) a message, then reload the truncated
+   * history. Redo restores it.
+   */
+  const revertSession = useCallback(
+    async (messageID: string) => {
+      const sid = activeSessionIdRef.current;
+      if (!sid) {
+        return;
+      }
+      try {
+        await client.revertSession(sid, messageID);
+        await loadSession(sid);
+        setError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [client, loadSession],
+  );
+
+  const unrevertSession = useCallback(async () => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) {
+      return;
+    }
+    try {
+      await client.unrevertSession(sid);
+      await loadSession(sid);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [client, loadSession]);
+
+  /** Delete a single message, optimistically dropping it from the view. */
+  const deleteMessage = useCallback(
+    async (messageID: string) => {
+      const sid = activeSessionIdRef.current;
+      if (!sid) {
+        return;
+      }
+      try {
+        await client.deleteMessage(sid, messageID);
+        setState((prev) => {
+          if (!(messageID in prev)) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[messageID];
+          return next;
+        });
+        setError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        try {
+          await loadSession(sid);
+        } catch {
+          // resync is best-effort; the banner already shows the error
+        }
+      }
+    },
+    [client, loadSession],
+  );
+
+  const mergeSession = useCallback((session: OpencodeSession) => {
+    setSessions((prev) => sortSessions([session, ...prev.filter((s) => s.id !== session.id)]));
+  }, []);
+
+  /**
+   * Share (or unshare) the active session. Returns the updated session so
+   * callers can read the share URL; null on failure (see the error banner).
+   */
+  const shareSession = useCallback(async () => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) {
+      return null;
+    }
+    try {
+      const session = await client.shareSession(sid);
+      mergeSession(session);
+      setError(null);
+      return session;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      return null;
+    }
+  }, [client, mergeSession]);
+
+  const unshareSession = useCallback(async () => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) {
+      return null;
+    }
+    try {
+      const session = await client.unshareSession(sid);
+      mergeSession(session);
+      setError(null);
+      return session;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      return null;
+    }
+  }, [client, mergeSession]);
+
+  /** Compact the session into a summary with the currently selected model. */
+  const summarizeSession = useCallback(async () => {
+    const sid = activeSessionIdRef.current;
+    const model = activeServer.model;
+    if (!sid || !model) {
+      return;
+    }
+    try {
+      await client.summarizeSession(sid, {
+        providerID: model.providerID,
+        modelID: model.modelID,
+      });
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [client, activeServer.model]);
+
+  /**
+   * Stage a message composed while a run is in flight. It is sent
+   * automatically, in order, once the session goes idle again.
+   */
+  const queueMessage = useCallback(
+    (item: Omit<QueuedMessage, 'id' | 'sessionID'>) => {
+      const sid = activeSessionIdRef.current;
+      if (!sid) {
+        return;
+      }
+      const entry: QueuedMessage = { ...item, id: queuedMessageId(), sessionID: sid };
+      messageQueueRef.current = [...messageQueueRef.current, entry];
+      setMessageQueue(messageQueueRef.current);
+    },
+    [],
+  );
+
+  const removeQueuedMessage = useCallback((id: string) => {
+    messageQueueRef.current = messageQueueRef.current.filter((entry) => entry.id !== id);
+    setMessageQueue(messageQueueRef.current);
+  }, []);
+
+  // Queued entries belong to the session they were composed in; switching
+  // sessions drops them rather than risking a send to the wrong session.
+  useEffect(() => {
+    messageQueueRef.current = [];
+    setMessageQueue([]);
+  }, [activeSessionId]);
+
+  // Flush the queue whenever the active session goes idle: each flush sends
+  // one entry, which moves the status back out of ready until the run ends.
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  const sendCommandRef = useRef(sendCommand);
+  sendCommandRef.current = sendCommand;
+  const sendShellRef = useRef(sendShell);
+  sendShellRef.current = sendShell;
+  useEffect(() => {
+    if (status !== 'ready') {
+      return;
+    }
+    const sid = activeSessionIdRef.current;
+    if (!sid) {
+      return;
+    }
+    const next = messageQueueRef.current.find((entry) => entry.sessionID === sid);
+    if (!next) {
+      return;
+    }
+    messageQueueRef.current = messageQueueRef.current.filter((entry) => entry.id !== next.id);
+    setMessageQueue(messageQueueRef.current);
+    if (next.kind === 'command' && next.command) {
+      void sendCommandRef.current(next.command, next.args ?? '', next.attachments);
+    } else if (next.kind === 'shell' && next.command) {
+      void sendShellRef.current(next.command);
+    } else {
+      void sendMessageRef.current(next.text, next.attachments);
+    }
+  }, [status, activeSessionId]);
+
   const messages = useMemo(() => deriveMessages(state), [state]);
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -700,6 +1190,23 @@ export function useOpencodeChat() {
     retryLoad,
     loadOlderMessages,
     sendMessage,
+    sendCommand,
+    sendShell,
+    answerQuestion,
+    rejectQuestion,
+    pendingQuestions,
+    pendingPermissions,
+    replyToPermission,
+    renameSession,
+    revertSession,
+    unrevertSession,
+    deleteMessage,
+    shareSession,
+    unshareSession,
+    summarizeSession,
+    messageQueue,
+    queueMessage,
+    removeQueuedMessage,
     stop,
   };
 }

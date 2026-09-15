@@ -1,11 +1,18 @@
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  CornerUpLeftIcon,
   CpuIcon,
   FolderOpenIcon,
   GitCompareIcon,
   GitForkIcon,
+  Link2OffIcon,
+  ListTreeIcon,
+  Redo2Icon,
+  Share2Icon,
+  ShrinkIcon,
   SparklesIcon,
+  Undo2Icon,
 } from 'lucide-react-native';
 import { useState } from 'react';
 import {
@@ -28,6 +35,7 @@ import { useThemeColors } from '@/hooks/use-theme-colors';
 import { ContextPanel } from './context-panel';
 import { FilePanel, useFilePanelState, type FilePanelState } from './file-panel';
 import { ReviewPanel } from './review-panel';
+import { relativeTime } from './sessions-drawer';
 
 export type SessionPanel = 'review' | 'context' | 'files';
 
@@ -171,6 +179,17 @@ export function SessionMenuSheet({
   onForkSession,
   isForking,
   forkDisabled,
+  onUndo,
+  onRedo,
+  historyDisabled,
+  onShare,
+  shareHint,
+  shared,
+  onUnshare,
+  onSummarize,
+  onOpenChildren,
+  childCount,
+  onOpenParent,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -180,6 +199,17 @@ export function SessionMenuSheet({
   onForkSession: () => void;
   isForking: boolean;
   forkDisabled: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  historyDisabled: boolean;
+  onShare: () => void;
+  shareHint: string;
+  shared: boolean;
+  onUnshare: () => void;
+  onSummarize: () => void;
+  onOpenChildren: () => void;
+  childCount: number | undefined;
+  onOpenParent?: () => void;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -208,7 +238,11 @@ export function SessionMenuSheet({
             </Pressable>
           </View>
 
-          <View className="gap-2">
+          <ScrollView
+            style={{ maxHeight: 480 }}
+            contentContainerStyle={{ gap: 8 }}
+            keyboardShouldPersistTaps="handled"
+          >
             <MenuRow
               icon={SparklesIcon}
               label="Model"
@@ -240,7 +274,62 @@ export function SessionMenuSheet({
               onPress={onForkSession}
               disabled={forkDisabled || isForking}
             />
-          </View>
+            <MenuRow
+              icon={Undo2Icon}
+              label="Undo last message"
+              hint="Truncate history"
+              onPress={onUndo}
+              disabled={historyDisabled}
+            />
+            <MenuRow
+              icon={Redo2Icon}
+              label="Redo"
+              hint="Restore undone messages"
+              onPress={onRedo}
+              disabled={historyDisabled}
+            />
+            <MenuRow
+              icon={Share2Icon}
+              label={shared ? 'Copy share link' : 'Share session'}
+              hint={shareHint}
+              onPress={onShare}
+            />
+            {shared ? (
+              <MenuRow
+                icon={Link2OffIcon}
+                label="Unshare session"
+                hint="Take the link down"
+                onPress={onUnshare}
+              />
+            ) : null}
+            <MenuRow
+              icon={ShrinkIcon}
+              label="Summarize"
+              hint="Compact into a summary"
+              onPress={onSummarize}
+              disabled={historyDisabled}
+            />
+            <MenuRow
+              icon={ListTreeIcon}
+              label="Sub-sessions"
+              hint={
+                childCount === undefined
+                  ? 'Forks and subagent runs'
+                  : childCount === 0
+                    ? 'None yet'
+                    : `${childCount} session${childCount === 1 ? '' : 's'}`
+              }
+              onPress={onOpenChildren}
+            />
+            {onOpenParent ? (
+              <MenuRow
+                icon={CornerUpLeftIcon}
+                label="Parent session"
+                hint="Back to the spawning session"
+                onPress={onOpenParent}
+              />
+            ) : null}
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -304,4 +393,84 @@ export function useSessionPanels() {
     setFullScreenDiff,
     fileState,
   };
+}
+
+/** Lists the sub-sessions spawned from the active session. */
+export function ChildSessionsSheet({
+  visible,
+  onClose,
+  children,
+  isLoading,
+  onSelect,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  children: OpencodeSession[];
+  isLoading: boolean;
+  onSelect: (sessionId: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
+
+  return (
+    <Modal
+      transparent
+      statusBarTranslucent
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-end">
+        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
+        <View
+          className="rounded-t-3xl bg-surface pt-4"
+          style={{
+            paddingBottom: insets.bottom + 16,
+            paddingLeft: insets.left + 16,
+            paddingRight: insets.right + 16,
+          }}
+        >
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-lg font-semibold text-foreground">Sub-sessions</Text>
+            <Pressable hitSlop={8} onPress={onClose}>
+              <Text className="text-sm text-muted">Done</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView style={{ maxHeight: 400 }} keyboardShouldPersistTaps="handled">
+            {isLoading ? (
+              <View className="items-center py-6">
+                <Text className="text-sm text-muted">Loading…</Text>
+              </View>
+            ) : children.length === 0 ? (
+              <Text className="px-1 py-4 text-sm text-muted">
+                No sub-sessions yet. Forks and subagent runs appear here.
+              </Text>
+            ) : (
+              children.map((session) => (
+                <Pressable
+                  key={session.id}
+                  className="flex-row items-center gap-3 rounded-xl px-3 py-2.5"
+                  onPress={() => {
+                    onClose();
+                    onSelect(session.id);
+                  }}
+                >
+                  <GitForkIcon size={16} color={colors.muted} />
+                  <View className="flex-1">
+                    <Text className="text-sm text-foreground" numberOfLines={1}>
+                      {session.title || 'Untitled session'}
+                    </Text>
+                    <Text className="text-xs text-muted">
+                      {relativeTime(session.time.updated)}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 }

@@ -78,6 +78,47 @@ export function useProjects(server: ServerConfig, enabled = true) {
   });
 }
 
+/** Slash commands registered on the server, for the composer `/` picker. */
+export function useCommands(server: ServerConfig, enabled = true) {
+  const client = useMemo(() => createClientFromServer(server), [server]);
+  return useQuery({
+    queryKey: ['commands', ...serverKey(server)],
+    queryFn: () => client.listCommands(),
+    enabled,
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * Fuzzy file search backing the composer `@` mention picker and the
+ * quick-open sheet (the mobile equivalent of ctrl+p). Only queries when the
+ * search text is non-empty.
+ */
+export function useFileSearch(server: ServerConfig, query: string, enabled = true) {
+  const client = useMemo(() => createClientFromServer(server), [server]);
+  return useQuery({
+    queryKey: ['file-search', ...serverKey(server), query],
+    queryFn: () => client.findFiles(query, 20),
+    enabled: enabled && query.length > 0,
+    staleTime: 15 * 1000,
+  });
+}
+
+/** Sessions spawned from a session (forks, subagent runs). */
+export function useSessionChildren(
+  server: ServerConfig,
+  sessionId: string | null,
+  enabled = true,
+) {
+  const client = useMemo(() => createClientFromServer(server), [server]);
+  return useQuery({
+    queryKey: ['session-children', ...serverKey(server), sessionId ?? ''],
+    queryFn: () => client.listSessionChildren(sessionId as string),
+    enabled: enabled && !!sessionId,
+    staleTime: 30 * 1000,
+  });
+}
+
 /** Working-tree changes for the Review panel. */
 export function useVcsDiff(server: ServerConfig, enabled = true) {
   const client = useMemo(() => createClientFromServer(server), [server]);

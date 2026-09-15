@@ -29,6 +29,9 @@ export type PromptInputProps = {
   disabled?: boolean;
   className?: string;
   footer?: ReactNode;
+  /** Controlled cursor, used to place it after programmatic inserts. */
+  selection?: { start: number; end: number };
+  onSelectionChange?: (selection: { start: number; end: number }) => void;
 };
 
 export function PromptInput({
@@ -45,11 +48,14 @@ export function PromptInput({
   disabled = false,
   className,
   footer,
+  selection,
+  onSelectionChange,
 }: PromptInputProps) {
   const colors = useThemeColors();
   const { choose } = useDialog();
   const isBusy = status === 'submitted' || status === 'streaming';
-  const canSubmit = (value.trim().length > 0 || attachments.length > 0) && !disabled;
+  const hasContent = value.trim().length > 0 || attachments.length > 0;
+  const canSubmit = hasContent && !disabled;
 
   const handleAdd = async () => {
     await choose({
@@ -106,6 +112,8 @@ export function PromptInput({
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
         editable={!disabled}
+        selection={selection}
+        onSelectionChange={(event) => onSelectionChange?.(event.nativeEvent.selection)}
       />
 
       <View className="flex-row items-center justify-between px-1 pt-1">
@@ -120,15 +128,27 @@ export function PromptInput({
           {footer}
         </View>
         {isBusy ? (
-          <Button
-            accessibilityLabel="Stop"
-            size="icon-sm"
-            variant="destructive"
-            className="rounded-full"
-            onPress={onStop}
-          >
-            <SquareIcon size={13} color="#ffffff" />
-          </Button>
+          <View className="flex-row items-center gap-2">
+            {canSubmit ? (
+              <Button
+                accessibilityLabel="Queue message"
+                size="icon-sm"
+                className="rounded-full"
+                onPress={onSubmit}
+              >
+                <ArrowUpIcon size={16} color={colors.dark ? '#18181b' : '#ffffff'} />
+              </Button>
+            ) : null}
+            <Button
+              accessibilityLabel="Stop"
+              size="icon-sm"
+              variant="destructive"
+              className="rounded-full"
+              onPress={onStop}
+            >
+              <SquareIcon size={13} color="#ffffff" />
+            </Button>
+          </View>
         ) : (
           <Button
             accessibilityLabel="Send"

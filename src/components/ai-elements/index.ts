@@ -19,3 +19,4 @@ export * from './sources';
 export * from './suggestion';
 export * from './task';
 export * from './tool';
+export * from './tool-details';

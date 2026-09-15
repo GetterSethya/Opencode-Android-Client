@@ -1,9 +1,15 @@
 import {
+  AtSignIcon,
   CheckIcon,
+  ClockIcon,
   CopyIcon,
   EllipsisVerticalIcon,
   FileIcon,
   GitForkIcon,
+  SlashIcon,
+  TerminalIcon,
+  Trash2Icon,
+  XIcon,
 } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clipboard, Image, Pressable, Text, View } from 'react-native';
@@ -13,7 +19,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { pickDocuments, pickImages, type PendingAttachment } from '@/chat/attachments';
 import { useChatSettings } from '@/chat/settings';
 import type { ChatStatus, UIMessage } from '@/chat/types';
-import { useOpencodeChat } from '@/chat/use-opencode-chat';
+import type { PermissionReply } from '@/chat/opencode';
+import {
+  useOpencodeChat,
+  type PendingPermission,
+  type PendingQuestion,
+} from '@/chat/use-opencode-chat';
 import { useProviderCatalog } from '@/chat/use-opencode-provider-management';
 import {
   Conversation,
@@ -25,6 +36,7 @@ import {
   MessageText,
   MessageToolbar,
   PromptInput,
+  PromptInputFooter,
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
@@ -40,17 +52,30 @@ import {
   parseQuestionInput,
   TodoTool,
   parseTodoInput,
+  TaskTool,
+  WebfetchTool,
+  ReadTool,
+  WriteTool,
+  BashTool,
+  EditTool,
+  PermissionCard,
 } from '@/components/ai-elements';
 import { HamburgerButton, SessionsDrawer, type SessionsDrawerHandle } from '@/components/chat/sessions-drawer';
+import { ComposerSuggestions } from '@/components/chat/composer-suggestions';
+import { QuickOpenSheet } from '@/components/chat/quick-open-sheet';
+import { useCommands } from '@/chat/use-workspace';
 import { ModelPicker } from '@/components/chat/model-picker';
 import { ProvidersSheet } from '@/components/chat/providers-sheet';
 import { FullScreenFileViewer } from '@/components/chat/file-panel';
 import { FullScreenDiffViewer } from '@/components/chat/review-panel';
 import {
+  ChildSessionsSheet,
   SessionMenuSheet,
   SessionPanelSheet,
   useSessionPanels,
 } from '@/components/chat/session-panels';
+import { ShellSheet } from '@/components/chat/shell-sheet';
+import { useSessionChildren } from '@/chat/use-workspace';
 import { NewSessionSheet } from '@/components/chat/new-session-sheet';
 import { useDialog } from '@/components/ui/dialog';
 import { SettingsForm } from '@/components/chat/settings-form';
@@ -86,6 +111,12 @@ const MessageItem = memo(function MessageItem({
   onFork,
   forkTarget,
   forkDisabled,
+  pendingQuestions,
+  onAnswerQuestion,
+  onRejectQuestion,
+  pendingPermissions,
+  onReplyPermission,
+  onDeleteMessage,
 }: {
   message: UIMessage;
   isLast: boolean;
@@ -93,6 +124,12 @@ const MessageItem = memo(function MessageItem({
   onFork: (messageId: string) => void;
   forkTarget: string | null;
   forkDisabled: boolean;
+  pendingQuestions: PendingQuestion[];
+  onAnswerQuestion: (requestID: string, answers: string[][]) => Promise<void>;
+  onRejectQuestion: (requestID: string) => Promise<void>;
+  pendingPermissions: PendingPermission[];
+  onReplyPermission: (requestID: string, reply: PermissionReply) => Promise<void>;
+  onDeleteMessage: (messageId: string) => void;
 }) {
   const colors = useThemeColors();
   const isUser = message.role === 'user';
@@ -185,10 +222,41 @@ const MessageItem = memo(function MessageItem({
               UIMessage['parts'][number],
               { type: `tool-${string}` }
             >;
+            // A paused run's permission request names the tool call it waits
+            // on; the approval card renders under that tool part.
+            const pendingPermission = pendingPermissions.find(
+              (entry) => entry.callID && entry.callID === toolPart.toolCallId,
+            );
+            const permissionCard = pendingPermission ? (
+              <PermissionCard
+                permission={pendingPermission}
+                resetKey={pendingPermission.requestID}
+                onReply={(reply) =>
+                  onReplyPermission(pendingPermission.requestID, reply)
+                }
+              />
+            ) : null;
             // The question tool's input is a prompt for the user, not data to
             // dump as JSON, so it gets its own presentation (expanded by
-            // default) showing the options and the chosen answer.
+            // default) showing the options and the chosen answer. While the
+            // matching question request is pending the options are tappable
+            // and the reply resumes the paused run.
             if (toolPart.toolName === 'question') {
+              const pending = pendingQuestions.find(
+                (entry) => entry.callID === toolPart.toolCallId,
+              );
+              const parsedQuestions = parseQuestionInput(toolPart.input);
+              // The event's questions are authoritative; prefer them when the
+              // streamed part input is empty or still partial.
+              const questions = parsedQuestions.length
+                ? parsedQuestions
+                : (pending?.questions ?? []).map((question) => ({
+                    header: question.header,
+                    question: question.question,
+                    options: question.options ?? [],
+                    multiple: question.multiple,
+                    custom: question.custom,
+                  }));
               return (
                 <Tool key={index} defaultOpen>
                   <ToolHeader
@@ -198,10 +266,21 @@ const MessageItem = memo(function MessageItem({
                   />
                   <ToolContent>
                     <QuestionTool
-                      questions={parseQuestionInput(toolPart.input)}
+                      questions={questions}
+                      onReject={
+                        pending ? () => onRejectQuestion(pending.requestID) : undefined
+                      }
                       answers={parseQuestionAnswers(toolPart.metadata)}
                       answered={toolPart.state === 'output-available'}
+                      pending={!!pending}
+                      resetKey={toolPart.toolCallId}
+                      onAnswer={
+                        pending
+                          ? (answers) => onAnswerQuestion(pending.requestID, answers)
+                          : undefined
+                      }
                     />
+                    {permissionCard}
                   </ToolContent>
                 </Tool>
               );
@@ -218,6 +297,129 @@ const MessageItem = memo(function MessageItem({
                   />
                   <ToolContent>
                     <TodoTool todos={parseTodoInput(toolPart.input)} />
+                    {permissionCard}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            // Subagent, fetch, file and shell tools get purpose-built rows
+            // instead of a raw JSON parameter dump.
+            if (toolPart.toolName === 'task') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <TaskTool
+                      input={toolPart.input}
+                      output={toolPart.output}
+                      errorText={toolPart.errorText}
+                      state={toolPart.state}
+                    />
+                    {permissionCard}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            if (toolPart.toolName === 'webfetch') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <WebfetchTool
+                      input={toolPart.input}
+                      output={toolPart.output}
+                      errorText={toolPart.errorText}
+                      state={toolPart.state}
+                    />
+                    {permissionCard}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            if (toolPart.toolName === 'read') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <ReadTool
+                      input={toolPart.input}
+                      output={toolPart.output}
+                      errorText={toolPart.errorText}
+                      state={toolPart.state}
+                    />
+                    {permissionCard}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            if (toolPart.toolName === 'write') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <WriteTool
+                      input={toolPart.input}
+                      output={toolPart.output}
+                      errorText={toolPart.errorText}
+                      state={toolPart.state}
+                    />
+                    {permissionCard}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            if (toolPart.toolName === 'bash') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <BashTool
+                      input={toolPart.input}
+                      output={toolPart.output}
+                      errorText={toolPart.errorText}
+                      state={toolPart.state}
+                    />
+                    {permissionCard}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+            if (toolPart.toolName === 'edit') {
+              return (
+                <Tool key={index}>
+                  <ToolHeader
+                    title={toolPart.title}
+                    toolName={toolPart.toolName}
+                    state={toolPart.state}
+                  />
+                  <ToolContent>
+                    <EditTool
+                      input={toolPart.input}
+                      output={toolPart.output}
+                      errorText={toolPart.errorText}
+                      state={toolPart.state}
+                    />
+                    {permissionCard}
                   </ToolContent>
                 </Tool>
               );
@@ -232,7 +434,8 @@ const MessageItem = memo(function MessageItem({
                 <ToolContent>
                   <ToolInput input={toolPart.input} />
                   <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
-                </ToolContent>
+                                    {permissionCard}
+</ToolContent>
               </Tool>
             );
           }
@@ -280,6 +483,9 @@ const MessageItem = memo(function MessageItem({
                 )}
               </MessageAction>
             ) : null}
+            <MessageAction label="Delete message" onPress={() => onDeleteMessage(message.id)}>
+              <Trash2Icon size={14} color={colors.muted} />
+            </MessageAction>
             {forkAction}
           </MessageActions>
         </MessageToolbar>
@@ -350,14 +556,39 @@ export function ChatScreen() {
     hasMoreOlder,
     loadOlderMessages,
     sendMessage,
+    sendCommand,
+    sendShell,
+    answerQuestion,
+    rejectQuestion,
+    pendingQuestions,
+    pendingPermissions,
+    replyToPermission,
+    renameSession,
+    revertSession,
+    unrevertSession,
+    deleteMessage,
+    shareSession,
+    unshareSession,
+    summarizeSession,
+    messageQueue,
+    queueMessage,
+    removeQueuedMessage,
     stop,
   } = useOpencodeChat();
   const { activeServer } = useChatSettings();
-  const { confirm } = useDialog();
+  const { confirm, notify } = useDialog();
   const colors = useThemeColors();
 
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [selectionOverride, setSelectionOverride] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [shellOpen, setShellOpen] = useState(false);
+  const commandsQuery = useCommands(activeServer, !!activeSessionId);
   const drawerRef = useRef<SessionsDrawerHandle>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
@@ -378,6 +609,69 @@ export function ChatScreen() {
   const isBusy = status === 'submitted' || status === 'streaming';
   const lastMessageId = messages.at(-1)?.id;
   const forkDisabled = isBusy || isForking;
+
+  const [childrenOpen, setChildrenOpen] = useState(false);
+  const sessionChildren = useSessionChildren(
+    activeServer,
+    activeSessionId,
+    menuOpen || childrenOpen,
+  );
+  const historyDisabled = isBusy || isForking || !activeSessionId;
+
+  const handleUndo = useCallback(async () => {
+    const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+    if (!lastUser) {
+      return;
+    }
+    const confirmed = await confirm({
+      title: 'Undo last message',
+      message: 'Truncate the history back to the last message? This cannot be undone.',
+      confirmLabel: 'Undo',
+      destructive: true,
+    });
+    if (confirmed) {
+      setMenuOpen(false);
+      void revertSession(lastUser.id);
+    }
+  }, [confirm, messages, revertSession, setMenuOpen]);
+
+  const handleRedo = useCallback(() => {
+    setMenuOpen(false);
+    void unrevertSession();
+  }, [setMenuOpen, unrevertSession]);
+
+  const handleShare = useCallback(async () => {
+    setMenuOpen(false);
+    const existing = activeSession?.share?.url;
+    if (existing) {
+      Clipboard.setString(existing);
+      await notify({ title: 'Share link copied', message: existing });
+      return;
+    }
+    const session = await shareSession();
+    if (session?.share?.url) {
+      Clipboard.setString(session.share.url);
+      await notify({ title: 'Session shared', message: session.share.url });
+    }
+  }, [activeSession, notify, setMenuOpen, shareSession]);
+
+  const handleUnshare = useCallback(async () => {
+    setMenuOpen(false);
+    await unshareSession();
+    await notify({ title: 'Session unshared', message: 'The public link is down.' });
+  }, [notify, setMenuOpen, unshareSession]);
+
+  const handleSummarize = useCallback(async () => {
+    const confirmed = await confirm({
+      title: 'Summarize session',
+      message: 'Compact this session into a summary with the current model?',
+      confirmLabel: 'Summarize',
+    });
+    if (confirmed) {
+      setMenuOpen(false);
+      void summarizeSession();
+    }
+  }, [confirm, setMenuOpen, summarizeSession]);
 
   const handleForkMessage = useCallback(
     async (messageId: string) => {
@@ -405,6 +699,36 @@ export function ChatScreen() {
     }
   }, [confirm, forkSession]);
 
+  const handleAnswerQuestion = useCallback(
+    (requestID: string, answers: string[][]) => answerQuestion(requestID, answers),
+    [answerQuestion],
+  );
+
+  const handleRejectQuestion = useCallback(
+    (requestID: string) => rejectQuestion(requestID),
+    [rejectQuestion],
+  );
+
+  const handleReplyPermission = useCallback(
+    (requestID: string, reply: PermissionReply) => replyToPermission(requestID, reply),
+    [replyToPermission],
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
+      const confirmed = await confirm({
+        title: 'Delete message',
+        message: 'Remove this message from the session?',
+        confirmLabel: 'Delete',
+        destructive: true,
+      });
+      if (confirmed) {
+        void deleteMessage(messageId);
+      }
+    },
+    [confirm, deleteMessage],
+  );
+
   const renderMessage = useCallback(
     ({ item }: { item: UIMessage }) => (
       <MessageItem
@@ -414,23 +738,96 @@ export function ChatScreen() {
         onFork={handleForkMessage}
         forkTarget={forkTarget}
         forkDisabled={forkDisabled}
+        pendingQuestions={pendingQuestions}
+        onAnswerQuestion={handleAnswerQuestion}
+        onRejectQuestion={handleRejectQuestion}
+        pendingPermissions={pendingPermissions}
+        onReplyPermission={handleReplyPermission}
+        onDeleteMessage={handleDeleteMessage}
       />
     ),
-    [lastMessageId, status, handleForkMessage, forkTarget, forkDisabled],
+    [lastMessageId, status, handleForkMessage, forkTarget, forkDisabled, pendingQuestions, handleAnswerQuestion, handleRejectQuestion, pendingPermissions, handleReplyPermission, handleDeleteMessage],
   );
 
   const openDrawer = useCallback(() => {
     drawerRef.current?.open();
   }, []);
 
+  const placeCursor = useCallback((position: number) => {
+    const next = { start: position, end: position };
+    setSelection(next);
+    setSelectionOverride(next);
+  }, []);
+
+  const insertText = useCallback(
+    (text: string) => {
+      const next = input.slice(0, selection.start) + text + input.slice(selection.end);
+      setInput(next);
+      placeCursor(selection.start + text.length);
+    },
+    [input, selection, placeCursor],
+  );
+
+  const applySuggestion = useCallback(
+    (next: string, cursor: number) => {
+      setInput(next);
+      placeCursor(cursor);
+    },
+    [placeCursor],
+  );
+
+  // Messages composed while a run is in flight wait in the queue and are
+  // sent automatically, in order, once the session goes idle again.
+  const queuedForSession = messageQueue.filter((entry) => entry.sessionID === activeSessionId);
+
   const handleSubmit = () => {
-    if ((!input.trim() && attachments.length === 0) || isBusy) {
+    if (!input.trim() && attachments.length === 0) {
       return;
     }
-    sendMessage(input, attachments);
+    // A leading /known-command routes to the command endpoint so agent and
+    // model overrides apply; anything else is sent as a plain prompt.
+    const match = input.match(/^\s*\/([A-Za-z0-9_-]+)([\s\S]*)$/);
+    const commandName = match?.[1];
+    const knownCommand =
+      commandName && commandsQuery.data?.some((command) => command.name === commandName)
+        ? commandName
+        : undefined;
+    const args = (match?.[2] ?? '').trim();
+    // A leading ! runs a shell command (TUI parity); attachments can't ride
+    // along, so those fall back to a plain prompt.
+    const shellMatch = attachments.length === 0 ? input.match(/^\s*!(\S[\s\S]*)$/) : null;
+    const shellCommand = shellMatch?.[1]?.trim();
+    if (isBusy) {
+      queueMessage({
+        kind: knownCommand ? 'command' : shellCommand ? 'shell' : 'message',
+        text: knownCommand
+          ? `/${knownCommand}${args ? ` ${args}` : ''}`
+          : (shellCommand ? `!${shellCommand}` : input),
+        command: knownCommand ?? shellCommand,
+        args,
+        attachments,
+      });
+    } else if (knownCommand) {
+      sendCommand(knownCommand, args, attachments);
+    } else if (shellCommand) {
+      sendShell(shellCommand);
+    } else {
+      sendMessage(input, attachments);
+    }
     setInput('');
     setAttachments([]);
   };
+
+  const handleRunShell = useCallback(
+    (command: string) => {
+      if (isBusy) {
+        queueMessage({ kind: 'shell', text: `!${command}`, command, args: '', attachments: [] });
+      } else {
+        sendShell(command);
+      }
+    },
+    [isBusy, queueMessage, sendShell],
+  );
 
   const handleAddImage = async () => {
     const picked = await pickImages();
@@ -480,6 +877,7 @@ export function ChatScreen() {
         onSelect={selectSession}
         onNewSession={() => setNewSessionOpen(true)}
         onDeleteSession={deleteSession}
+        onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpen={() => {
           void refreshSessions();
@@ -546,6 +944,37 @@ export function ChatScreen() {
               </View>
             ) : null}
 
+            <ComposerSuggestions
+              server={activeServer}
+              enabled={!!activeSessionId && !isBusy}
+              value={input}
+              selection={selection}
+              onInsert={applySuggestion}
+            />
+
+            {queuedForSession.length > 0 ? (
+              <View className="border-t border-border px-4 py-2">
+                <Text className="pb-1 text-xs font-medium uppercase tracking-wide text-muted">
+                  Queued · sends when the run finishes
+                </Text>
+                {queuedForSession.map((entry) => (
+                  <View key={entry.id} className="flex-row items-center gap-2 py-1">
+                    <ClockIcon size={14} color={colors.muted} />
+                    <Text className="flex-1 text-sm text-muted" numberOfLines={1}>
+                      {entry.text || `${entry.attachments.length} attachment(s)`}
+                    </Text>
+                    <Pressable
+                      accessibilityLabel="Remove queued message"
+                      hitSlop={8}
+                      onPress={() => removeQueuedMessage(entry.id)}
+                    >
+                      <XIcon size={16} color={colors.muted} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             <View className="border-t border-border p-3">
               <PromptInput
                 value={input}
@@ -559,6 +988,36 @@ export function ChatScreen() {
                 }
                 attachments={attachments}
                 status={status}
+                selection={selectionOverride ?? undefined}
+                onSelectionChange={(next) => {
+                  setSelection(next);
+                  setSelectionOverride(null);
+                }}
+                footer={
+                  <PromptInputFooter>
+                    <Pressable
+                      accessibilityLabel="Insert slash command"
+                      className="h-8 w-8 items-center justify-center rounded-full"
+                      onPress={() => insertText('/')}
+                    >
+                      <SlashIcon size={18} color={colors.muted} />
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel="Find file to mention"
+                      className="h-8 w-8 items-center justify-center rounded-full"
+                      onPress={() => setQuickOpen(true)}
+                    >
+                      <AtSignIcon size={18} color={colors.muted} />
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel="Run shell command"
+                      className="h-8 w-8 items-center justify-center rounded-full"
+                      onPress={() => setShellOpen(true)}
+                    >
+                      <TerminalIcon size={18} color={colors.muted} />
+                    </Pressable>
+                  </PromptInputFooter>
+                }
               />
             </View>
           </KeyboardAvoidingView>
@@ -593,6 +1052,19 @@ export function ChatScreen() {
         }}
       />
       <ProvidersSheet visible={providersOpen} onClose={() => setProvidersOpen(false)} />
+      <QuickOpenSheet
+        visible={quickOpen}
+        onClose={() => setQuickOpen(false)}
+        server={activeServer}
+        onInsertMention={(path) => insertText(`@${path} `)}
+      />
+      <ShellSheet
+        visible={shellOpen}
+        onClose={() => setShellOpen(false)}
+        directoryLabel={activeServer.directory || 'server default folder'}
+        isBusy={isBusy}
+        onRun={handleRunShell}
+      />
       <SessionMenuSheet
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -608,6 +1080,37 @@ export function ChatScreen() {
         onForkSession={handleForkSession}
         isForking={isForking}
         forkDisabled={isBusy}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        historyDisabled={historyDisabled}
+        onShare={handleShare}
+        shareHint={activeSession?.share?.url ?? 'Publish a link'}
+        shared={!!activeSession?.share?.url}
+        onUnshare={handleUnshare}
+        onSummarize={handleSummarize}
+        onOpenChildren={() => {
+          setMenuOpen(false);
+          setChildrenOpen(true);
+        }}
+        childCount={sessionChildren.data?.length}
+        onOpenParent={
+          activeSession?.parentID
+            ? () => {
+                const parentID = activeSession?.parentID;
+                setMenuOpen(false);
+                if (parentID) {
+                  void selectSession(parentID);
+                }
+              }
+            : undefined
+        }
+      />
+      <ChildSessionsSheet
+        visible={childrenOpen}
+        onClose={() => setChildrenOpen(false)}
+        children={sessionChildren.data ?? []}
+        isLoading={sessionChildren.isLoading}
+        onSelect={(sessionId) => void selectSession(sessionId)}
       />
       <SessionPanelSheet
         panel={panel}

@@ -21,15 +21,18 @@ import {
 import {
   BackHandler,
   DrawerLayoutAndroid,
+  Modal,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { OpencodeSession } from '@/chat/opencode';
+import { Button } from '@/components/ui/button';
 import { useDialog } from '@/components/ui/dialog';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
@@ -37,7 +40,7 @@ import { cn } from '@/lib/utils';
 const DRAWER_WIDTH = 320;
 const RECENT_LIMIT = 10;
 
-function relativeTime(timestamp: number) {
+export function relativeTime(timestamp: number) {
   const diff = Date.now() - timestamp;
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) {
@@ -71,6 +74,7 @@ export type SessionsDrawerProps = {
   onSelect: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => void;
+  onRenameSession: (sessionId: string, title: string) => void;
   onOpenSettings: () => void;
   onOpen?: () => void;
   children: ReactNode;
@@ -86,6 +90,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
       onSelect,
       onNewSession,
       onDeleteSession,
+      onRenameSession,
       onOpenSettings,
       onOpen,
       children,
@@ -94,10 +99,11 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
   ) {
     const insets = useSafeAreaInsets();
     const colors = useThemeColors();
-    const { confirm } = useDialog();
+    const { confirm, choose } = useDialog();
     const drawerRef = useRef<DrawerLayoutAndroid>(null);
     const [query, setQuery] = useState('');
     const [showAll, setShowAll] = useState(false);
+    const [renaming, setRenaming] = useState<OpencodeSession | null>(null);
 
     const close = useCallback(() => {
       drawerRef.current?.closeDrawer();
@@ -150,6 +156,19 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
         }
       },
       [confirm, onDeleteSession],
+    );
+
+    const openSessionActions = useCallback(
+      (session: OpencodeSession) => {
+        void choose({
+          title: session.title || 'Untitled session',
+          actions: [
+            { label: 'Rename', onPress: () => setRenaming(session) },
+            { label: 'Delete', onPress: () => void confirmDelete(session) },
+          ],
+        });
+      },
+      [choose, confirmDelete],
     );
 
     const renderNavigationView = useCallback(
@@ -231,7 +250,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
                       onSelect(session.id);
                       close();
                     }}
-                    onLongPress={() => confirmDelete(session)}
+                    onLongPress={() => openSessionActions(session)}
                   >
                     <MessageSquareIcon size={18} color={isActive ? colors.foreground : colors.muted} />
                     <View className="flex-1">
@@ -296,6 +315,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
         query,
         activeSessionId,
         confirmDelete,
+        openSessionActions,
         close,
         onNewSession,
         onSelect,
@@ -304,27 +324,111 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
     );
 
     return (
-      <DrawerLayoutAndroid
-        ref={drawerRef}
-        style={{ flex: 1 }}
-        drawerWidth={DRAWER_WIDTH}
-        drawerPosition="left"
-        drawerBackgroundColor={colors.surface}
-        keyboardDismissMode="on-drag"
-        onDrawerOpen={() => {
-          openRef.current = true;
-          onOpen?.();
-        }}
-        onDrawerClose={() => {
-          openRef.current = false;
-        }}
-        renderNavigationView={renderNavigationView}
-      >
-        {children}
-      </DrawerLayoutAndroid>
+      <>
+        <DrawerLayoutAndroid
+          ref={drawerRef}
+          style={{ flex: 1 }}
+          drawerWidth={DRAWER_WIDTH}
+          drawerPosition="left"
+          drawerBackgroundColor={colors.surface}
+          keyboardDismissMode="on-drag"
+          onDrawerOpen={() => {
+            openRef.current = true;
+            onOpen?.();
+          }}
+          onDrawerClose={() => {
+            openRef.current = false;
+          }}
+          renderNavigationView={renderNavigationView}
+        >
+          {children}
+        </DrawerLayoutAndroid>
+        <RenameSessionSheet
+          session={renaming}
+          onClose={() => setRenaming(null)}
+          onRename={(title) => {
+            if (renaming) {
+              onRenameSession(renaming.id, title);
+            }
+            setRenaming(null);
+          }}
+        />
+      </>
     );
   },
 );
+
+/** Rename sheet opened from a session row's long-press actions. */
+function RenameSessionSheet({
+  session,
+  onClose,
+  onRename,
+}: {
+  session: OpencodeSession | null;
+  onClose: () => void;
+  onRename: (title: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
+  const [title, setTitle] = useState('');
+
+  useEffect(() => {
+    if (session) {
+      setTitle(session.title);
+    }
+  }, [session]);
+
+  const trimmed = title.trim();
+  return (
+    <Modal
+      transparent
+      statusBarTranslucent
+      visible={session !== null}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-end">
+        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
+        <KeyboardAvoidingView behavior="padding">
+          <View
+            className="rounded-t-3xl bg-surface pt-4"
+            style={{
+              paddingBottom: insets.bottom + 16,
+              paddingLeft: insets.left + 16,
+              paddingRight: insets.right + 16,
+            }}
+          >
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-semibold text-foreground">Rename session</Text>
+              <Pressable hitSlop={8} onPress={onClose}>
+                <Text className="text-sm text-muted">Cancel</Text>
+              </Pressable>
+            </View>
+            <View className="mb-3 flex-row items-center gap-2 rounded-xl bg-surface-secondary px-3">
+              <TextInput
+                className="flex-1 py-2.5 text-sm text-foreground"
+                placeholder="Session title"
+                placeholderTextColor={colors.muted}
+                value={title}
+                onChangeText={setTitle}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (trimmed) {
+                    onRename(trimmed);
+                  }
+                }}
+              />
+            </View>
+            <Button disabled={!trimmed} onPress={() => onRename(trimmed)}>
+              Save
+            </Button>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
 
 export function HamburgerButton({ onPress }: { onPress: () => void }) {
   const colors = useThemeColors();

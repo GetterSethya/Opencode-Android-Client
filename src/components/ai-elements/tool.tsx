@@ -7,16 +7,18 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react-native';
-import { isValidElement, type ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { isValidElement, useEffect, useState, type ReactNode } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import type { ToolState } from '@/chat/types';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
@@ -178,6 +180,8 @@ export type QuestionToolItem = {
   question: string;
   options: QuestionToolOption[];
   multiple?: boolean;
+  /** Whether a free-form reply is accepted (defaults to true). */
+  custom?: boolean;
 };
 
 /**
@@ -221,6 +225,7 @@ export function parseQuestionInput(input: unknown): QuestionToolItem[] {
       question: question.question,
       options,
       multiple: question.multiple === true,
+      custom: question.custom === false ? false : true,
     });
   }
   return items;
@@ -244,30 +249,114 @@ export function parseQuestionAnswers(metadata: unknown): string[][] {
  * Renders the `question` tool: the prompt, its options, and — once answered —
  * which option was picked. Answers that don't match an option (free-form
  * replies) are shown verbatim.
+ *
+ * When `pending` with an `onAnswer` callback the options become tappable and
+ * the reply is submitted through POST /question/:id/reply, which resumes the
+ * paused run server-side. Until then the only way to answer was typing in the
+ * composer, which the server treats as a new prompt and leaves the run stuck.
  */
 export function QuestionTool({
   questions,
   answers = [],
   answered = false,
+  pending = false,
+  resetKey,
+  onAnswer,
+  onReject,
   className,
 }: {
   questions: QuestionToolItem[];
   answers?: string[][];
   answered?: boolean;
+  pending?: boolean;
+  /** Clears local selection when the row is recycled or the request changes. */
+  resetKey?: string;
+  /** Called with the per-question answers when the user submits. */
+  onAnswer?: (answers: string[][]) => Promise<void>;
+  /** Dismisses the request without answering (rejects it server-side). */
+  onReject?: () => Promise<void>;
   className?: string;
 }) {
   const colors = useThemeColors();
+  const interactive = pending && onAnswer !== undefined;
+  const [selected, setSelected] = useState<string[][]>([]);
+  const [customText, setCustomText] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelected([]);
+    setCustomText([]);
+    setSubmitting(false);
+    setSubmitted(false);
+    setSubmitError(null);
+  }, [resetKey, pending]);
 
   if (questions.length === 0) {
     return null;
   }
 
+  const toggleOption = (questionIndex: number, label: string) => {
+    setSubmitError(null);
+    setSelected((prev) => {
+      const current = prev[questionIndex] ?? [];
+      const next =
+        questions[questionIndex]?.multiple === true
+          ? current.includes(label)
+            ? current.filter((value) => value !== label)
+            : [...current, label]
+          : [label];
+      const copy = [...prev];
+      copy[questionIndex] = next;
+      return copy;
+    });
+  };
+
+  const setCustom = (questionIndex: number, text: string) => {
+    setSubmitError(null);
+    setCustomText((prev) => {
+      const copy = [...prev];
+      copy[questionIndex] = text;
+      return copy;
+    });
+  };
+
+  const answersFor = (questionIndex: number): string[] => {
+    const picked = selected[questionIndex] ?? [];
+    const typed = (customText[questionIndex] ?? '').trim();
+    return typed ? [...picked, typed] : picked;
+  };
+
+  const canSubmit =
+    interactive &&
+    !submitting &&
+    !submitted &&
+    questions.every((_, index) => answersFor(index).length > 0);
+
+  const submit = async () => {
+    if (!onAnswer || !canSubmit) {
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onAnswer(questions.map((_, index) => answersFor(index)));
+      setSubmitted(true);
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <View className={cn('gap-2', className)}>
       {questions.map((item, questionIndex) => {
-        const selected = answers[questionIndex] ?? [];
-        const selectedSet = new Set(selected);
-        const freeForm = selected.filter(
+        const recorded = answers[questionIndex] ?? [];
+        const picked = interactive ? (selected[questionIndex] ?? []) : recorded;
+        const selectedSet = new Set(picked);
+        const freeForm = picked.filter(
           (answer) => !item.options.some((option) => option.label === answer),
         );
         return (
@@ -286,9 +375,8 @@ export function QuestionTool({
               <View className="gap-1.5 pt-0.5">
                 {item.options.map((option, optionIndex) => {
                   const isSelected = selectedSet.has(option.label);
-                  return (
+                  const row = (
                     <View
-                      key={optionIndex}
                       className={cn(
                         'flex-row items-start gap-2 rounded-lg border px-2.5 py-2',
                         isSelected
@@ -311,8 +399,33 @@ export function QuestionTool({
                       </View>
                     </View>
                   );
+                  return interactive && !submitted ? (
+                    <Pressable
+                      key={optionIndex}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: isSelected }}
+                      onPress={() => toggleOption(questionIndex, option.label)}
+                    >
+                      {row}
+                    </Pressable>
+                  ) : (
+                    <View key={optionIndex}>{row}</View>
+                  );
                 })}
               </View>
+            ) : null}
+
+            {interactive && !submitted && item.custom !== false ? (
+              <TextInput
+                className="rounded-lg border border-border bg-surface-secondary px-2.5 py-2 text-sm text-foreground"
+                placeholder="Or type your own answer…"
+                placeholderTextColor={colors.muted}
+                value={customText[questionIndex] ?? ''}
+                onChangeText={(text) => setCustom(questionIndex, text)}
+                autoCapitalize="sentences"
+                returnKeyType="done"
+                onSubmitEditing={submit}
+              />
             ) : null}
 
             {freeForm.map((answer) => (
@@ -327,7 +440,7 @@ export function QuestionTool({
               </View>
             ))}
 
-            {!answered && selected.length === 0 ? (
+            {!answered && recorded.length === 0 && !interactive ? (
               <Text className="text-xs text-muted">
                 {item.options.length > 0 ? 'Waiting for an answer…' : 'Waiting for a response…'}
               </Text>
@@ -335,6 +448,57 @@ export function QuestionTool({
           </View>
         );
       })}
+
+      {interactive ? (
+        <View className="gap-2 pt-1">
+          {submitError ? <Text className="text-xs text-danger">{submitError}</Text> : null}
+          {submitted ? (
+            <View className="flex-row items-center gap-2">
+              <Spinner size={14} color={colors.muted} />
+              <Text className="text-xs text-muted">Answer sent, resuming…</Text>
+            </View>
+          ) : (
+            <View className="flex-row items-center gap-2">
+              <View className="flex-1">
+                <Button disabled={!canSubmit} onPress={submit}>
+                  {submitting ? 'Sending…' : 'Send answers'}
+                </Button>
+              </View>
+              {onReject ? (
+                <DismissButton onReject={onReject} disabled={submitting} />
+              ) : null}
+            </View>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Dismisses a pending question without answering (rejects it server-side). */
+function DismissButton({ onReject, disabled }: { onReject: () => Promise<void>; disabled: boolean }) {
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  return (
+    <View className="gap-1">
+      {rejectError ? <Text className="text-xs text-danger">{rejectError}</Text> : null}
+      <Button
+        variant="outline"
+        disabled={disabled || rejecting}
+        onPress={async () => {
+          setRejecting(true);
+          setRejectError(null);
+          try {
+            await onReject();
+          } catch (cause) {
+            setRejectError(cause instanceof Error ? cause.message : String(cause));
+          } finally {
+            setRejecting(false);
+          }
+        }}
+      >
+        {rejecting ? 'Dismissing…' : 'Dismiss'}
+      </Button>
     </View>
   );
 }

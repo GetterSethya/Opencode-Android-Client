@@ -80,6 +80,14 @@ jobs:
       - name: Assemble release APK (arm64-v8a)
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
         working-directory: android
+        env:
+          # Metro inlines EXPO_PUBLIC_* when the JS bundle is built, which
+          # happens here (not during prebuild), so these must be set for this
+          # step or the installed app reports the "dev" fallback.
+          APP_VARIANT: release
+          EXPO_PUBLIC_APP_VERSION: ${{ steps.appversion.outputs.version }}
+          EXPO_PUBLIC_APP_VERSION_CODE: ${{ github.run_number }}
+          EXPO_PUBLIC_OPENCODE_URL: ${{ vars.EXPO_PUBLIC_OPENCODE_URL }}
 
       - name: Rename APK
         run: cp android/app/build/outputs/apk/release/app-release.apk "opencode-${{ github.ref_name }}-arm64-v8a.apk"
