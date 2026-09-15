@@ -4,6 +4,21 @@ Unofficial Android client for an [opencode](https://opencode.ai) server, built w
 
 Android only. There is no iOS or web target.
 
+## Screenshots
+
+|  |  |
+| :---: | :---: |
+| ![Sessions drawer](docs/screenshots/sessions-drawer.png) | ![Model picker](docs/screenshots/model-picker.png) |
+| Sessions — browse, search, switch project folder | Model picker — each provider's models and variants |
+| ![Session menu](docs/screenshots/session-menu.png) | ![Providers](docs/screenshots/providers.png) |
+| Session menu — model, diff review, context, files | Providers — connect by API key or OAuth |
+| ![Review changes](docs/screenshots/review.png) | ![Diff](docs/screenshots/diff-expanded.png) |
+| Review changes — working-tree diff, per file | Diff — additions and deletions |
+| ![Open file](docs/screenshots/files.png) | ![File viewer](docs/screenshots/file-view.png) |
+| Open file — browse the project tree | Files render with line numbers and highlighting |
+| ![Context](docs/screenshots/context.png) | ![Settings](docs/screenshots/settings.png) |
+| Context — token usage and breakdown | Settings — servers, theme and build version |
+
 ## Features
 
 **Chat**
