@@ -109,11 +109,6 @@ jobs:
             echo "## What changed"
             echo
             git log --no-merges --pretty='- %s' "$range"
-            echo
-            echo "---"
-            echo "Standalone arm64-v8a build. The JS runtime is bundled, so no Metro or"
-            echo "development server is needed, and expo-dev-client is disabled. Installs"
-            echo "alongside a development build (package \`com.opencode.expo.release\`)."
           } > RELEASE_NOTES.md
           cat RELEASE_NOTES.md
 
