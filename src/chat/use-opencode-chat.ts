@@ -140,6 +140,19 @@ async function buildFileParts(attachments: PendingAttachment[]): Promise<Opencod
   return parts;
 }
 
+/** Rebuilds sendable prompt parts from a stored user message (for retry). */
+function recordToInputParts(record: MessageRecord): OpencodePartInput[] {
+  const parts: OpencodePartInput[] = [];
+  for (const part of Object.values(record.parts)) {
+    if (part.type === 'text' && part.text.trim()) {
+      parts.push({ type: 'text', text: part.text });
+    } else if (part.type === 'file') {
+      parts.push({ type: 'file', mime: part.mime, filename: part.filename, url: part.url });
+    }
+  }
+  return parts;
+}
+
 function applyEvent(state: MessageState, event: OpencodeEvent, sessionId: string): MessageState {
   switch (event.type) {
     case 'message.updated': {
@@ -191,6 +204,30 @@ function applyEvent(state: MessageState, event: OpencodeEvent, sessionId: string
   }
 }
 
+/**
+ * Collapses the server's discriminated error union into the flat shape the UI
+ * renders. Not every variant carries a status code; provider auth failures
+ * only have a message.
+ */
+function toMessageError(error: OpencodeMessageInfo['error']): UIMessage['error'] {
+  if (!error) {
+    return undefined;
+  }
+  const data = error.data ?? {};
+  const message =
+    typeof data.message === 'string'
+      ? data.message
+      : typeof data.providerID === 'string'
+        ? `Authentication failed for ${data.providerID}.`
+        : undefined;
+  return {
+    name: error.name,
+    message,
+    statusCode: typeof data.statusCode === 'number' ? data.statusCode : undefined,
+    isRetryable: typeof data.isRetryable === 'boolean' ? data.isRetryable : undefined,
+  };
+}
+
 function deriveMessages(state: MessageState): UIMessage[] {
   return Object.values(state)
     .sort((a, b) => a.info.time.created - b.info.time.created)
@@ -205,6 +242,7 @@ function deriveMessages(state: MessageState): UIMessage[] {
         role: info.role,
         model: info.modelID,
         durationMs,
+        error: toMessageError(info.error),
         parts: Object.values(record.parts)
           .map(partToUI)
           .filter((part): part is UIMessagePart => part !== null),
@@ -238,6 +276,8 @@ export type PendingQuestion = {
   callID: string;
   /** Authoritative questions from the event, used if the part input lags. */
   questions: OpencodeQuestion[];
+  /** Local update time; guards reconciliation against in-flight events. */
+  updatedAt?: number;
 };
 
 /**
@@ -319,10 +359,54 @@ export function useOpencodeChat() {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
 
+  // Mirror of `state` for callbacks that must read the latest messages without
+  // being re-created on every streamed part.
+  const stateRef = useRef<MessageState>({});
+  stateRef.current = state;
+
   const sessionsRef = useRef<OpencodeSession[]>([]);
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
+
+  /**
+   * Reconciles pending question requests with the server. The SSE
+   * `question.asked` event only covers requests raised while this client is
+   * connected; requests still pending from before (app restart, another
+   * client) would otherwise render read-only. Entries the server no longer
+   * reports are dropped.
+   */
+  const refreshPendingQuestions = useCallback(async () => {
+    const startedAt = Date.now();
+    try {
+      const requests = await client.listQuestions();
+      setPendingQuestionMap((prev) => {
+        const reported = new Set(requests.map((request) => request.id));
+        const next: Record<string, PendingQuestion> = {};
+        for (const request of requests) {
+          const existing = prev[request.id];
+          next[request.id] = {
+            requestID: request.id,
+            sessionID: request.sessionID,
+            messageID: request.tool?.messageID ?? existing?.messageID ?? '',
+            callID: request.tool?.callID ?? existing?.callID ?? '',
+            questions: request.questions ?? existing?.questions ?? [],
+            updatedAt: existing?.updatedAt ?? startedAt,
+          };
+        }
+        // Drop entries the server no longer reports, but keep ones raised
+        // after this fetch began (a live `question.asked` racing the GET).
+        for (const [id, entry] of Object.entries(prev)) {
+          if (!reported.has(id) && (entry.updatedAt ?? 0) > startedAt) {
+            next[id] = entry;
+          }
+        }
+        return next;
+      });
+    } catch {
+      // Best effort: the SSE event remains the fast path for live requests.
+    }
+  }, [client]);
 
   const loadSession = useCallback(
     async (sessionId: string) => {
@@ -331,8 +415,9 @@ export function useOpencodeChat() {
       setActiveSessionId(sessionId);
       setHistoryLimit(INITIAL_HISTORY_LIMIT);
       setHasMoreOlder(history.length >= INITIAL_HISTORY_LIMIT);
+      void refreshPendingQuestions();
     },
-    [client],
+    [client, refreshPendingQuestions],
   );
 
   const bootstrap = useCallback(
@@ -356,6 +441,7 @@ export function useOpencodeChat() {
         }
         const sorted = sortSessions(list);
         setSessions(sorted);
+        void refreshPendingQuestions();
 
         if (sorted.length > 0) {
           const history = await client.listMessages(sorted[0].id, INITIAL_HISTORY_LIMIT);
@@ -386,7 +472,7 @@ export function useOpencodeChat() {
         }
       }
     },
-    [client],
+    [client, refreshPendingQuestions],
   );
 
   useEffect(() => {
@@ -506,16 +592,17 @@ export function useOpencodeChat() {
           id: string;
           sessionID: string;
           questions: OpencodeQuestion[];
-          tool: { messageID: string; callID: string };
+          tool?: { messageID: string; callID: string };
         };
         setPendingQuestionMap((prev) => ({
           ...prev,
           [properties.id]: {
             requestID: properties.id,
             sessionID: properties.sessionID,
-            messageID: properties.tool.messageID,
-            callID: properties.tool.callID,
+            messageID: properties.tool?.messageID ?? '',
+            callID: properties.tool?.callID ?? '',
             questions: properties.questions ?? [],
+            updatedAt: Date.now(),
           },
         }));
         return;
@@ -596,6 +683,11 @@ export function useOpencodeChat() {
       }
     });
 
+    // A reconnect can have missed question events; resync from the server.
+    eventSource.addEventListener('open', () => {
+      void refreshPendingQuestions();
+    });
+
     eventSource.addEventListener('error', () => {
       // react-native-sse reconnects automatically.
     });
@@ -603,7 +695,7 @@ export function useOpencodeChat() {
     return () => {
       eventSource.close();
     };
-  }, [client, settingsReady, loadSession, queryClient]);
+  }, [client, settingsReady, loadSession, queryClient, refreshPendingQuestions]);
 
   /**
    * Pulls the next (older) page in. Guarded so a fling to the top cannot fire
@@ -787,6 +879,70 @@ export function useOpencodeChat() {
       }
     },
     [client, activeServer.model],
+  );
+
+  /**
+   * Retry a failed assistant turn: undo back to the prompt that produced it,
+   * then re-send that prompt. The revert keeps history clean instead of
+   * stacking a duplicate user message on top of the empty error bubble.
+   */
+  const retryMessage = useCallback(
+    async (messageID: string) => {
+      const sid = activeSessionIdRef.current;
+      if (!sid) {
+        return;
+      }
+      const target = stateRef.current[messageID];
+      if (!target || target.info.role !== 'assistant') {
+        return;
+      }
+      const prompt = Object.values(stateRef.current)
+        .filter(
+          (record) =>
+            record.info.role === 'user' && record.info.time.created < target.info.time.created,
+        )
+        .sort((a, b) => b.info.time.created - a.info.time.created)[0];
+      if (!prompt) {
+        return;
+      }
+      const parts = recordToInputParts(prompt);
+      if (parts.length === 0) {
+        return;
+      }
+
+      setError(null);
+      setLoadError(null);
+      try {
+        await client.revertSession(sid, prompt.info.id);
+        await loadSession(sid);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        return;
+      }
+
+      const created = Date.now();
+      const id = optimisticMessageId();
+      const text = parts
+        .filter(
+          (part): part is Extract<OpencodePartInput, { type: 'text' }> => part.type === 'text',
+        )
+        .map((part) => part.text)
+        .join('\n\n');
+      setState((prev) => ({
+        ...prev,
+        [id]: buildOptimisticMessage(sid, id, created, text, []),
+      }));
+      setStatus('submitted');
+
+      try {
+        await client.promptAsync(sid, parts, id, activeServer.model);
+        setStatus('streaming');
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        setStatus('error');
+      }
+    },
+    [client, loadSession, activeServer.model],
   );
 
   /**
@@ -1190,6 +1346,7 @@ export function useOpencodeChat() {
     retryLoad,
     loadOlderMessages,
     sendMessage,
+    retryMessage,
     sendCommand,
     sendShell,
     answerQuestion,

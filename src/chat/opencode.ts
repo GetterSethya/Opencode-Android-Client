@@ -69,6 +69,21 @@ export type OpencodePart =
   | OpencodeFilePart
   | OpencodeOtherPart;
 
+/**
+ * A model/provider failure delivered on an assistant message. The server sets
+ * `info.error` and stops streaming, often leaving `parts` empty; without this
+ * the app renders an unexplained empty bubble.
+ */
+export type OpencodeMessageError = {
+  name: string;
+  data?: {
+    message?: string;
+    statusCode?: number;
+    isRetryable?: boolean;
+    [key: string]: unknown;
+  };
+};
+
 export type OpencodeMessageInfo = {
   id: string;
   sessionID: string;
@@ -76,6 +91,8 @@ export type OpencodeMessageInfo = {
   time: { created: number; completed?: number };
   modelID?: string;
   providerID?: string;
+  /** Set when the assistant turn failed (APIError, ProviderAuthError, ...). */
+  error?: OpencodeMessageError;
 };
 
 export type OpencodeMessage = {
@@ -314,6 +331,14 @@ export type OpencodeQuestion = {
   custom?: boolean;
 };
 
+/** A pending question request as returned by GET /question. */
+export type OpencodeQuestionRequest = {
+  id: string;
+  sessionID: string;
+  questions: OpencodeQuestion[];
+  tool?: { messageID: string; callID: string };
+};
+
 export type OpencodeEvent =
   | { type: 'message.updated'; properties: { info: OpencodeMessageInfo } }
   | { type: 'message.part.updated'; properties: { part: OpencodePart; delta?: string } }
@@ -326,7 +351,7 @@ export type OpencodeEvent =
         id: string;
         sessionID: string;
         questions: OpencodeQuestion[];
-        tool: { messageID: string; callID: string };
+        tool?: { messageID: string; callID: string };
       };
     }
   | {
@@ -728,6 +753,11 @@ export class OpencodeClient {
 
   abort(sessionId: string) {
     return this.request<boolean>(`/session/${sessionId}/abort`, { method: 'POST' });
+  }
+
+  /** Pending `question` tool requests across all sessions. */
+  listQuestions() {
+    return this.request<OpencodeQuestionRequest[]>('/question');
   }
 
   /**

@@ -66,12 +66,20 @@ export type UIMessagePart =
   | SourceUrlUIPart
   | FileUIPart;
 
+export type MessageError = {
+  name: string;
+  message?: string;
+  statusCode?: number;
+  isRetryable?: boolean;
+};
+
 export type UIMessage = {
   id: string;
   role: 'user' | 'assistant' | 'system';
   parts: UIMessagePart[];
   model?: string;
   durationMs?: number;
+  error?: MessageError;
 };
 
 export type ChatStatus = 'ready' | 'submitted' | 'streaming' | 'error';

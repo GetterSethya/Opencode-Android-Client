@@ -81,6 +81,7 @@ import { useDialog } from '@/components/ui/dialog';
 import { SettingsForm } from '@/components/chat/settings-form';
 import { SystemBars } from '@/components/system-bars';
 import {
+  ErrorState,
   NotFoundState,
   ServerErrorState,
   classifyError,
@@ -117,6 +118,7 @@ const MessageItem = memo(function MessageItem({
   pendingPermissions,
   onReplyPermission,
   onDeleteMessage,
+  onRetry,
 }: {
   message: UIMessage;
   isLast: boolean;
@@ -130,6 +132,7 @@ const MessageItem = memo(function MessageItem({
   pendingPermissions: PendingPermission[];
   onReplyPermission: (requestID: string, reply: PermissionReply) => Promise<void>;
   onDeleteMessage: (messageId: string) => void;
+  onRetry: (messageId: string) => void;
 }) {
   const colors = useThemeColors();
   const isUser = message.role === 'user';
@@ -442,6 +445,27 @@ const MessageItem = memo(function MessageItem({
 
           return null;
         })}
+
+        {message.error ? (
+          <View className="pt-2">
+            <ErrorState
+              compact
+              kind={
+                message.error.statusCode && message.error.statusCode >= 500
+                  ? 'server'
+                  : 'unknown'
+              }
+              title={
+                message.error.statusCode
+                  ? `Request failed (${message.error.statusCode})`
+                  : 'Request failed'
+              }
+              message={message.error.message ?? message.error.name}
+              retryLabel="Retry"
+              onRetry={() => onRetry(message.id)}
+            />
+          </View>
+        ) : null}
       </MessageContent>
 
       {!isUser ? (
@@ -556,6 +580,7 @@ export function ChatScreen() {
     hasMoreOlder,
     loadOlderMessages,
     sendMessage,
+    retryMessage,
     sendCommand,
     sendShell,
     answerQuestion,
@@ -714,6 +739,13 @@ export function ChatScreen() {
     [replyToPermission],
   );
 
+  const handleRetryMessage = useCallback(
+    (messageId: string) => {
+      void retryMessage(messageId);
+    },
+    [retryMessage],
+  );
+
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
       const confirmed = await confirm({
@@ -744,9 +776,10 @@ export function ChatScreen() {
         pendingPermissions={pendingPermissions}
         onReplyPermission={handleReplyPermission}
         onDeleteMessage={handleDeleteMessage}
+        onRetry={handleRetryMessage}
       />
     ),
-    [lastMessageId, status, handleForkMessage, forkTarget, forkDisabled, pendingQuestions, handleAnswerQuestion, handleRejectQuestion, pendingPermissions, handleReplyPermission, handleDeleteMessage],
+    [lastMessageId, status, handleForkMessage, forkTarget, forkDisabled, pendingQuestions, handleAnswerQuestion, handleRejectQuestion, pendingPermissions, handleReplyPermission, handleDeleteMessage, handleRetryMessage],
   );
 
   const openDrawer = useCallback(() => {
@@ -843,13 +876,18 @@ export function ChatScreen() {
     }
   };
 
+  const lastMessage = messages.at(-1);
+  const lastError =
+    lastMessage?.role === 'assistant' && lastMessage.error ? lastMessage.error : undefined;
   const statusText = isForking
     ? 'Forking...'
     : isBusy
       ? 'Generating...'
       : isLoading
         ? 'Loading...'
-        : 'Ready';
+        : lastError
+          ? `Error${lastError.statusCode ? ` (${lastError.statusCode})` : ''}`
+          : 'Ready';
   const modelLabel = activeServer.model?.modelID ?? 'Default model';
 
   const providerCatalog = useProviderCatalog(activeServer, panel === 'context');
