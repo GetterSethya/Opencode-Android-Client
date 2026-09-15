@@ -6,6 +6,10 @@ Android only. There is no iOS or web target.
 
 ## Screenshots
 
+<p align="center">
+  <img src="docs/screenshots/chat.png" width="360" alt="Chat: streaming response with reasoning, markdown and a highlighted code block">
+</p>
+
 |  |  |
 | :---: | :---: |
 | ![Sessions drawer](docs/screenshots/sessions-drawer.png) | ![Model picker](docs/screenshots/model-picker.png) |
