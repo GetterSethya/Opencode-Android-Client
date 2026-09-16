@@ -30,7 +30,7 @@ const PREVIEW_LINE_LIMIT = 40;
 const CODE_ROW_HEIGHT = 18;
 const CHUNK_SIZE = 50;
 
-export function CodeBlock({ code, language = 'text', className }: CodeBlockProps) {
+export function CodeBlock({ code, language = 'plaintext', className }: CodeBlockProps) {
   const [fullOpen, setFullOpen] = useState(false);
 
   const { preview, lineCount, truncated } = useMemo(() => {

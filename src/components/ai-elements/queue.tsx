@@ -65,7 +65,7 @@ export const QueueItemIndicator = ({
   <View
     className={cn(
       'mt-0.5 h-2.5 w-2.5 rounded-full border',
-      completed ? 'border-zinc-300 bg-zinc-200' : 'border-zinc-400',
+      completed ? 'border-border bg-border' : 'border-border',
       className,
     )}
     {...props}
@@ -87,7 +87,7 @@ export const QueueItemContent = ({
     numberOfLines={1}
     className={cn(
       'flex-1',
-      completed ? 'text-zinc-400 line-through' : 'text-zinc-500',
+      completed ? 'text-muted line-through' : 'text-muted',
       className,
     )}
     {...props}
@@ -108,7 +108,7 @@ export const QueueItemDescription = ({
   <Text
     className={cn(
       'ml-6 text-xs',
-      completed ? 'text-zinc-300 line-through' : 'text-zinc-500',
+      completed ? 'text-muted line-through' : 'text-muted',
       className,
     )}
     {...props}
@@ -151,7 +151,7 @@ export type QueueItemImageProps = {
 };
 
 export const QueueItemImage = ({ className, source, style }: QueueItemImageProps) => (
-  <View className={cn('h-8 w-8 overflow-hidden rounded border border-zinc-200', className)}>
+  <View className={cn('h-8 w-8 overflow-hidden rounded border border-border', className)}>
     <Image source={source} style={[{ height: 32, width: 32 }, style]} />
   </View>
 );
@@ -163,11 +163,11 @@ export type QueueItemFileProps = ViewProps & {
 
 export const QueueItemFile = ({ children, className, ...props }: QueueItemFileProps) => (
   <View
-    className={cn('flex-row items-center gap-1 rounded border border-zinc-200 bg-zinc-100 px-2 py-1', className)}
+    className={cn('flex-row items-center gap-1 rounded border border-border bg-surface-secondary px-2 py-1', className)}
     {...props}
   >
     <PaperclipIcon size={12} color="#71717a" />
-    <Text className="max-w-[100px] text-xs text-zinc-700" numberOfLines={1}>
+    <Text className="max-w-[100px] text-xs text-foreground" numberOfLines={1}>
       {children}
     </Text>
   </View>
@@ -210,7 +210,7 @@ export const QueueSectionTrigger = ({
 }: QueueSectionTriggerProps) => (
   <CollapsibleTrigger
     className={cn(
-      'flex-row items-center justify-between rounded-md bg-zinc-50 px-3 py-2',
+      'flex-row items-center justify-between rounded-md bg-surface px-3 py-2',
       className,
     )}
     {...props}
@@ -240,7 +240,7 @@ export const QueueSectionLabel = ({
       <ChevronDownIcon size={16} color="#71717a" />
     </View>
     {icon}
-    <Text className="text-sm font-medium text-zinc-500">
+    <Text className="text-sm font-medium text-muted">
       {count} {label}
     </Text>
   </View>
@@ -260,7 +260,7 @@ export type QueueProps = ViewProps & {
 export const Queue = ({ className, ...props }: QueueProps) => (
   <View
     className={cn(
-      'gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm',
+      'gap-2 rounded-xl border border-border bg-surface px-3 py-2 shadow-sm',
       className,
     )}
     {...props}

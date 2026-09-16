@@ -211,7 +211,7 @@ export const ContextTrigger = ({ children, className, ...props }: ContextTrigger
     >
       {children ?? (
         <>
-          <Text className="font-medium text-zinc-500">{renderedPercent}</Text>
+          <Text className="font-medium text-muted">{renderedPercent}</Text>
           <ContextIcon />
         </>
       )}
@@ -241,7 +241,7 @@ export const ContextContent = ({ className, children }: ContextContentProps) => 
           onPress={() => setOpen(false)}
         />
         <View
-          className={cn('w-[280px] overflow-hidden rounded-lg border border-zinc-200 bg-white', className)}
+          className={cn('w-[280px] overflow-hidden rounded-lg border border-border bg-surface', className)}
         >
           {children}
         </View>
@@ -271,14 +271,14 @@ export const ContextContentHeader = ({
       {children ?? (
         <>
           <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-xs text-zinc-900">{displayPct}</Text>
-            <Text className="font-mono text-xs text-zinc-500">
+            <Text className="text-xs text-foreground">{displayPct}</Text>
+            <Text className="font-mono text-xs text-muted">
               {used} / {total}
             </Text>
           </View>
-          <View className="h-2 w-full overflow-hidden rounded-full bg-zinc-100">
+          <View className="h-2 w-full overflow-hidden rounded-full bg-surface-secondary">
             <View
-              className="h-full rounded-full bg-zinc-900"
+              className="h-full rounded-full bg-foreground"
               style={{ width: `${Math.min(usedPercent, 1) * PERCENT_MAX}%` }}
             />
           </View>
@@ -323,13 +323,13 @@ export const ContextContentFooter = ({
 
   return (
     <View
-      className={cn('w-full flex-row items-center justify-between gap-3 bg-zinc-100 p-3', className)}
+      className={cn('w-full flex-row items-center justify-between gap-3 bg-surface-secondary p-3', className)}
       {...props}
     >
       {children ?? (
         <>
-          <Text className="text-xs text-zinc-500">Total cost</Text>
-          <Text className="text-xs text-zinc-900">{totalCost}</Text>
+          <Text className="text-xs text-muted">Total cost</Text>
+          <Text className="text-xs text-foreground">{totalCost}</Text>
         </>
       )}
     </View>
@@ -343,9 +343,9 @@ const TokensWithCost = ({
   tokens?: number;
   costText?: string;
 }) => (
-  <Text className="text-xs text-zinc-900">
+  <Text className="text-xs text-foreground">
     {tokens === undefined ? '—' : formatCompact(tokens)}
-    {costText ? <Text className="text-zinc-500"> • {costText}</Text> : null}
+    {costText ? <Text className="text-muted"> • {costText}</Text> : null}
   </Text>
 );
 
@@ -377,7 +377,7 @@ export const ContextInputUsage = ({
 
   return (
     <View className={cn('flex-row items-center justify-between', className)} {...props}>
-      <Text className="text-xs text-zinc-500">Input</Text>
+      <Text className="text-xs text-muted">Input</Text>
       <TokensWithCost costText={inputCostText} tokens={inputTokens} />
     </View>
   );
@@ -411,7 +411,7 @@ export const ContextOutputUsage = ({
 
   return (
     <View className={cn('flex-row items-center justify-between', className)} {...props}>
-      <Text className="text-xs text-zinc-500">Output</Text>
+      <Text className="text-xs text-muted">Output</Text>
       <TokensWithCost costText={outputCostText} tokens={outputTokens} />
     </View>
   );
@@ -445,7 +445,7 @@ export const ContextReasoningUsage = ({
 
   return (
     <View className={cn('flex-row items-center justify-between', className)} {...props}>
-      <Text className="text-xs text-zinc-500">Reasoning</Text>
+      <Text className="text-xs text-muted">Reasoning</Text>
       <TokensWithCost costText={reasoningCostText} tokens={reasoningTokens} />
     </View>
   );
@@ -480,7 +480,7 @@ export const ContextCacheUsage = ({
 
   return (
     <View className={cn('flex-row items-center justify-between', className)} {...props}>
-      <Text className="text-xs text-zinc-500">Cache</Text>
+      <Text className="text-xs text-muted">Cache</Text>
       <TokensWithCost costText={cacheCostText} tokens={cacheTokens} />
     </View>
   );

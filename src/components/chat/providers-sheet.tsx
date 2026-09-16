@@ -35,7 +35,8 @@ import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 import { ModelsTab } from './models-tab';
-import { ConnectFlow, CustomProviderForm } from './provider-connect';
+import { ConnectFlow } from './provider-connect';
+import { CustomProviderForm } from './custom-provider-form';
 
 export type ProvidersSheetProps = {
   visible: boolean;

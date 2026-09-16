@@ -37,7 +37,7 @@ export type InlineCitationTextProps = TextProps & {
 };
 
 export const InlineCitationText = ({ className, ...props }: InlineCitationTextProps) => (
-  <Text className={cn('text-zinc-900', className)} {...props} />
+  <Text className={cn('text-foreground', className)} {...props} />
 );
 
 function getHostname(value: string): string | null {
@@ -110,12 +110,12 @@ export const InlineCitationCardTrigger = ({
       <Badge className={cn('ml-1 rounded-full', className)} variant="secondary">
         {children ??
           (hostname ? (
-            <Text className="text-xs text-zinc-900">
+            <Text className="text-xs text-foreground">
               {hostname}
               {sources.length > 1 ? ` +${sources.length - 1}` : ''}
             </Text>
           ) : (
-            <Text className="text-xs text-zinc-900">unknown</Text>
+            <Text className="text-xs text-foreground">unknown</Text>
           ))}
       </Badge>
     </Pressable>
@@ -147,7 +147,7 @@ export const InlineCitationCardBody = ({
           onPress={() => setOpen(false)}
         />
         <View
-          className={cn('w-80 overflow-hidden rounded-lg border border-zinc-200 bg-white', className)}
+          className={cn('w-80 overflow-hidden rounded-lg border border-border bg-surface', className)}
         >
           {children}
         </View>
@@ -249,7 +249,7 @@ export const InlineCitationCarouselHeader = ({
   ...props
 }: InlineCitationCarouselHeaderProps) => (
   <View
-    className={cn('flex-row items-center justify-between gap-2 rounded-t-md bg-zinc-100 p-2', className)}
+    className={cn('flex-row items-center justify-between gap-2 rounded-t-md bg-surface-secondary p-2', className)}
     {...props}
   />
 );
@@ -269,7 +269,7 @@ export const InlineCitationCarouselIndex = ({
   return (
     <View className={cn('flex-1 flex-row items-center justify-end px-3 py-1', className)} {...props}>
       {children ?? (
-        <Text className="text-xs text-zinc-500">
+        <Text className="text-xs text-muted">
           {current + 1}/{count}
         </Text>
       )}
@@ -327,13 +327,13 @@ export const InlineCitationSource = ({
 }: InlineCitationSourceProps) => (
   <View className={cn('gap-1', className)} {...props}>
     {title ? (
-      <Text className="text-sm font-medium leading-tight text-zinc-900" numberOfLines={1}>
+      <Text className="text-sm font-medium leading-tight text-foreground" numberOfLines={1}>
         {title}
       </Text>
     ) : null}
     {url ? (
       <Text
-        className="text-xs text-zinc-500"
+        className="text-xs text-muted"
         numberOfLines={1}
         onPress={() => Linking.openURL(url)}
       >
@@ -341,7 +341,7 @@ export const InlineCitationSource = ({
       </Text>
     ) : null}
     {description ? (
-      <Text className="text-sm leading-relaxed text-zinc-500" numberOfLines={3}>
+      <Text className="text-sm leading-relaxed text-muted" numberOfLines={3}>
         {description}
       </Text>
     ) : null}
@@ -356,9 +356,9 @@ export type InlineCitationQuoteProps = ViewProps & {
 
 export const InlineCitationQuote = ({ children, className, ...props }: InlineCitationQuoteProps) => (
   <View
-    className={cn('border-l-2 border-zinc-200 pl-3', className)}
+    className={cn('border-l-2 border-border pl-3', className)}
     {...props}
   >
-    <Text className="text-sm italic text-zinc-500">{children}</Text>
+    <Text className="text-sm italic text-muted">{children}</Text>
   </View>
 );

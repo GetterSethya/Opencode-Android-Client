@@ -34,7 +34,7 @@ export function Shimmer({ children, duration = 2, className }: ShimmerProps) {
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
   return (
-    <Animated.Text className={cn('text-zinc-500', className)} style={animatedStyle}>
+    <Animated.Text className={cn('text-muted', className)} style={animatedStyle}>
       {children}
     </Animated.Text>
   );

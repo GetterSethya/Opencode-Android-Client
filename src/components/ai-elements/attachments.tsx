@@ -191,8 +191,8 @@ export function Attachment({ data, onRemove, className, children, ...props }: At
         className={cn(
           'relative',
           variant === 'grid' && 'h-24 w-24 overflow-hidden rounded-lg',
-          variant === 'inline' && 'h-8 flex-row items-center gap-1.5 rounded-md border border-zinc-200 px-1.5',
-          variant === 'list' && 'w-full flex-row items-center gap-3 rounded-lg border border-zinc-200 p-3',
+          variant === 'inline' && 'h-8 flex-row items-center gap-1.5 rounded-md border border-border px-1.5',
+          variant === 'list' && 'w-full flex-row items-center gap-3 rounded-lg border border-border p-3',
           className,
         )}
         {...props}
@@ -247,9 +247,9 @@ export function AttachmentPreview({ fallbackIcon, className, ...props }: Attachm
     <View
       className={cn(
         'shrink-0 items-center justify-center overflow-hidden',
-        variant === 'grid' && 'h-full w-full bg-zinc-100',
-        variant === 'inline' && 'h-5 w-5 rounded bg-white',
-        variant === 'list' && 'h-12 w-12 rounded bg-zinc-100',
+        variant === 'grid' && 'h-full w-full bg-surface-secondary',
+        variant === 'inline' && 'h-5 w-5 rounded bg-surface',
+        variant === 'list' && 'h-12 w-12 rounded bg-surface-secondary',
         className,
       )}
       {...props}
@@ -277,11 +277,11 @@ export function AttachmentInfo({ showMediaType = false, className, ...props }: A
 
   return (
     <View className={cn('min-w-0 flex-1', className)} {...props}>
-      <Text className="text-sm text-zinc-900" numberOfLines={1}>
+      <Text className="text-sm text-foreground" numberOfLines={1}>
         {label}
       </Text>
       {showMediaType && data.mediaType ? (
-        <Text className="text-xs text-zinc-500" numberOfLines={1}>
+        <Text className="text-xs text-muted" numberOfLines={1}>
           {data.mediaType}
         </Text>
       ) : null}
@@ -317,7 +317,7 @@ export function AttachmentRemove({
     <Button
       accessibilityLabel={label}
       className={cn(
-        variant === 'grid' && 'absolute right-1 top-1 h-6 w-6 rounded-full bg-white/80',
+        variant === 'grid' && 'absolute right-1 top-1 h-6 w-6 rounded-full bg-surface/80',
         variant === 'inline' && 'h-5 w-5 rounded p-0',
         variant === 'list' && 'h-8 w-8 shrink-0 rounded p-0',
         className,
@@ -367,7 +367,7 @@ export function AttachmentHoverCardContent({
   children,
 }: AttachmentHoverCardContentProps) {
   return (
-    <View className={cn('rounded-md border border-zinc-200 bg-white p-2', className)}>
+    <View className={cn('rounded-md border border-border bg-surface p-2', className)}>
       {children}
     </View>
   );
@@ -388,9 +388,9 @@ export function AttachmentEmpty({ className, children, ...props }: AttachmentEmp
       {...props}
     >
       {typeof children === 'string' ? (
-        <Text className="text-sm text-zinc-500">{children}</Text>
+        <Text className="text-sm text-muted">{children}</Text>
       ) : (
-        (children ?? <Text className="text-sm text-zinc-500">No attachments</Text>)
+        (children ?? <Text className="text-sm text-muted">No attachments</Text>)
       )}
     </View>
   );

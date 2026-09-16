@@ -64,6 +64,7 @@ wire `OpencodePart` → `UIMessagePart` (`partToUI`) and stores them in per-mess
   quicksheet, and queueing messages while a run streams) live in `composer-suggestions.tsx`,
   `quick-open-sheet.tsx`, and `ChatScreen.tsx`; the `question` tool answers itself via
   `POST /question/:id/reply` (SSE `question.*` events tracked in `use-opencode-chat.ts`).
+- For async state, use `@tanstack/react-query` (`useQuery` / `useMutation`) — not manual `useEffect` + `useState` fetching.
 
 ## Performance constraints
 
@@ -82,3 +83,13 @@ plugin (`plugins/with-android-manifest-tweaks.js`, wired in `app.config.js`) re-
 hand-maintained manifest tweaks (cleartext network config for LAN opencode servers, landscape
 oriention, predictive-back opt-out) on every prebuild, so `android/` can be regenerated safely
 at any time.
+
+# Code quality / components
+
+- One file holds ~750 lines max — more is a sign it does too much and is getting hard to understand. Split it.
+- No god components. Keep components small, dumb, and single-responsibility for maintainability and reuse.
+- Prefer the compound component pattern when breaking down a big component or composing a complex one.
+- Lots of custom props is a smell of a complex component. Keep custom props minimal.
+- Never use `as any as SomeType`, `as unknown as SomeType`, or `as unknown as never`. Use proper types and generics.
+- No functions with long positional argument lists — hard to call correctly. Take a single options object instead.
+- When creating a component, forward the underlying ref properly and extend the underlying element's props.

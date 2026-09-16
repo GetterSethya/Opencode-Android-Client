@@ -75,7 +75,7 @@ export const ChainOfThoughtHeader = memo(function ChainOfThoughtHeader({
     <Collapsible onOpenChange={setIsOpen} open={isOpen}>
       <CollapsibleTrigger className={cn('flex-row items-center gap-2', className)} {...props}>
         <BrainIcon size={16} color="#71717a" />
-        <Text className="flex-1 text-sm text-zinc-500">{children ?? 'Chain of Thought'}</Text>
+        <Text className="flex-1 text-sm text-muted">{children ?? 'Chain of Thought'}</Text>
         <View style={{ transform: [{ rotate: isOpen ? '180deg' : '0deg' }] }}>
           <ChevronDownIcon size={16} color="#71717a" />
         </View>
@@ -97,9 +97,9 @@ export type ChainOfThoughtStepProps = ViewProps & {
 };
 
 const stepStatusText: Record<ChainOfThoughtStatus, string> = {
-  active: 'text-zinc-900',
-  complete: 'text-zinc-500',
-  pending: 'text-zinc-400',
+  active: 'text-foreground',
+  complete: 'text-muted',
+  pending: 'text-muted',
 };
 
 const stepStatusColor: Record<ChainOfThoughtStatus, string> = {
@@ -141,7 +141,7 @@ export const ChainOfThoughtStep = memo(function ChainOfThoughtStep({
         )}
         {description ? (
           typeof description === 'string' || typeof description === 'number' ? (
-            <Text className="text-xs text-zinc-500">{description}</Text>
+            <Text className="text-xs text-muted">{description}</Text>
           ) : (
             description
           )
@@ -177,7 +177,7 @@ export const ChainOfThoughtSearchResult = memo(function ChainOfThoughtSearchResu
   return (
     <Badge className={cn('gap-1 px-2 py-0.5', className)} variant="secondary" {...props}>
       {typeof children === 'string' ? (
-        <Text className="text-xs text-zinc-700">{children}</Text>
+        <Text className="text-xs text-foreground">{children}</Text>
       ) : (
         children
       )}
@@ -221,12 +221,12 @@ export const ChainOfThoughtImage = memo(function ChainOfThoughtImage({
   return (
     <View className={cn('mt-2 gap-2', className)} {...props}>
       <View
-        className="items-center justify-center overflow-hidden rounded-lg bg-zinc-100 p-3"
+        className="items-center justify-center overflow-hidden rounded-lg bg-surface-secondary p-3"
         style={{ maxHeight: 352 }}
       >
         {children}
       </View>
-      {caption ? <Text className="text-xs text-zinc-500">{caption}</Text> : null}
+      {caption ? <Text className="text-xs text-muted">{caption}</Text> : null}
     </View>
   );
 });

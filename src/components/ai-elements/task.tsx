@@ -41,12 +41,12 @@ export function TaskItemFile({ children, className, ...props }: TaskItemFileProp
   return (
     <View
       className={cn(
-        'flex-row items-center gap-1 self-start rounded-md border border-zinc-200 bg-zinc-100 px-1.5 py-0.5',
+        'flex-row items-center gap-1 self-start rounded-md border border-border bg-surface-secondary px-1.5 py-0.5',
         className,
       )}
       {...props}
     >
-      {renderTextChildren(children, 'text-xs text-zinc-900')}
+      {renderTextChildren(children, 'text-xs text-foreground')}
     </View>
   );
 }
@@ -58,7 +58,7 @@ export type TaskItemProps = ViewProps & {
 export function TaskItem({ children, className, ...props }: TaskItemProps) {
   return (
     <View className={cn('flex-row flex-wrap items-center', className)} {...props}>
-      {renderTextChildren(children, 'text-sm text-zinc-500')}
+      {renderTextChildren(children, 'text-sm text-muted')}
     </View>
   );
 }
@@ -102,7 +102,7 @@ export function TaskTrigger({ children, className, title, ...props }: TaskTrigge
       {children ?? (
         <>
           <SearchIcon size={16} color="#71717a" />
-          <Text className="flex-1 text-sm text-zinc-500">{title}</Text>
+          <Text className="flex-1 text-sm text-muted">{title}</Text>
           <View style={{ transform: [{ rotate: isOpen ? '180deg' : '0deg' }] }}>
             <ChevronDownIcon size={16} color="#71717a" />
           </View>
@@ -117,7 +117,7 @@ export type TaskContentProps = CollapsibleContentProps;
 export function TaskContent({ children, className, ...props }: TaskContentProps) {
   return (
     <CollapsibleContent className={cn(className)} {...props}>
-      <View className="mt-4 gap-2 border-l-2 border-zinc-200 pl-4">{children}</View>
+      <View className="mt-4 gap-2 border-l-2 border-border pl-4">{children}</View>
     </CollapsibleContent>
   );
 }

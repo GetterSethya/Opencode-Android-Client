@@ -10,7 +10,7 @@ export type CheckpointProps = ViewProps & {
 };
 
 function Separator({ className }: { className?: string }) {
-  return <View className={cn('h-px flex-1 bg-zinc-200', className)} />;
+  return <View className={cn('h-px flex-1 bg-border', className)} />;
 }
 
 export function Checkpoint({ className, children, ...props }: CheckpointProps) {

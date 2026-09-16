@@ -73,7 +73,7 @@ export const Confirmation = ({
 
   return (
     <ConfirmationContext.Provider value={contextValue}>
-      <View className={cn('flex-col gap-2 rounded-lg border border-zinc-200 p-3', className)} {...props}>
+      <View className={cn('flex-col gap-2 rounded-lg border border-border p-3', className)} {...props}>
         {children}
       </View>
     </ConfirmationContext.Provider>
@@ -86,7 +86,7 @@ export type ConfirmationTitleProps = TextProps & {
 };
 
 export const ConfirmationTitle = ({ className, ...props }: ConfirmationTitleProps) => (
-  <Text className={cn('text-sm text-zinc-900', className)} {...props} />
+  <Text className={cn('text-sm text-foreground', className)} {...props} />
 );
 
 export interface ConfirmationRequestProps {

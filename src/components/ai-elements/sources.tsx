@@ -7,6 +7,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
 export type SourcesProps = {
@@ -25,12 +26,13 @@ export type SourcesTriggerProps = {
 };
 
 export function SourcesTrigger({ count, children, className }: SourcesTriggerProps) {
+  const colors = useThemeColors();
   return (
     <CollapsibleTrigger className={cn('flex-row items-center gap-2', className)}>
       {children ?? (
         <>
-          <Text className="font-medium text-blue-600">Used {count} sources</Text>
-          <ChevronDownIcon size={14} color="#2563eb" />
+          <Text className="font-medium text-accent">Used {count} sources</Text>
+          <ChevronDownIcon size={14} color={colors.muted} />
         </>
       )}
     </CollapsibleTrigger>
@@ -56,13 +58,14 @@ export type SourceProps = {
 };
 
 export function Source({ href, title, children, className }: SourceProps) {
+  const colors = useThemeColors();
   return (
     <View className={cn('flex-row items-center gap-2', className)}>
       {children ?? (
         <>
-          <BookIcon size={14} color="#71717a" />
+          <BookIcon size={14} color={colors.muted} />
           <Text
-            className="font-medium text-blue-600"
+            className="font-medium text-accent"
             numberOfLines={1}
             onPress={() => Linking.openURL(href)}
           >

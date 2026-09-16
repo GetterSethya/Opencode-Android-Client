@@ -19,7 +19,7 @@ type CardProps = ViewProps & {
 
 function Card({ className, children, ...props }: CardProps) {
   return (
-    <View className={cn('rounded-xl border border-zinc-200 bg-white', className)} {...props}>
+    <View className={cn('rounded-xl border border-border bg-surface', className)} {...props}>
       {children}
     </View>
   );
@@ -39,7 +39,7 @@ type CardTitleProps = TextProps & {
 
 function CardTitle({ className, children, ...props }: CardTitleProps) {
   return (
-    <Text className={cn('text-base font-semibold text-zinc-900', className)} {...props}>
+    <Text className={cn('text-base font-semibold text-foreground', className)} {...props}>
       {children}
     </Text>
   );
@@ -47,7 +47,7 @@ function CardTitle({ className, children, ...props }: CardTitleProps) {
 
 function CardDescription({ className, children, ...props }: CardTitleProps) {
   return (
-    <Text className={cn('text-sm text-zinc-500', className)} {...props}>
+    <Text className={cn('text-sm text-muted', className)} {...props}>
       {children}
     </Text>
   );

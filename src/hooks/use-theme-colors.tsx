@@ -14,12 +14,12 @@ export type ThemeColors = {
   success: string;
 };
 
-export const surfaceClass = (dark: boolean) => (dark ? 'bg-zinc-900' : 'bg-white');
-export const backgroundClass = (dark: boolean) => (dark ? 'bg-zinc-950' : 'bg-white');
-export const foregroundClass = (dark: boolean) => (dark ? 'text-zinc-50' : 'text-zinc-900');
-export const mutedTextClass = (dark: boolean) => (dark ? 'text-zinc-400' : 'text-zinc-500');
-export const borderClass = (dark: boolean) => (dark ? 'border-zinc-700' : 'border-zinc-200');
-export const inputClass = (dark: boolean) => (dark ? 'bg-zinc-800' : 'bg-zinc-100');
+export const surfaceClass = (_dark: boolean) => 'bg-surface';
+export const backgroundClass = (_dark: boolean) => 'bg-background';
+export const foregroundClass = (_dark: boolean) => 'text-foreground';
+export const mutedTextClass = (_dark: boolean) => 'text-muted';
+export const borderClass = (_dark: boolean) => 'border-border';
+export const inputClass = (_dark: boolean) => 'bg-surface-secondary';
 
 /**
  * Provides the app-level resolved dark mode. Using context (rather than

@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import { Pressable, type PressableProps, Text } from 'react-native';
 import { tv, type VariantProps } from 'tailwind-variants';
 
@@ -51,21 +51,24 @@ export type ButtonProps = Omit<PressableProps, 'children'> &
     children?: ReactNode;
   };
 
-export function Button({ className, variant, size, children, disabled, ...props }: ButtonProps) {
-  const content =
-    typeof children === 'string' || typeof children === 'number' ? (
-      <Text className={labelVariants({ variant })}>{children}</Text>
-    ) : (
-      children
-    );
+export const Button = forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>(
+  function Button({ className, variant, size, children, disabled, ...props }, ref) {
+    const content =
+      typeof children === 'string' || typeof children === 'number' ? (
+        <Text className={labelVariants({ variant })}>{children}</Text>
+      ) : (
+        children
+      );
 
-  return (
-    <Pressable
-      className={cn(buttonVariants({ variant, size }), disabled && 'opacity-50', className)}
-      disabled={disabled}
-      {...props}
-    >
-      {content}
-    </Pressable>
-  );
-}
+    return (
+      <Pressable
+        ref={ref}
+        className={cn(buttonVariants({ variant, size }), disabled && 'opacity-50', className)}
+        disabled={disabled}
+        {...props}
+      >
+        {content}
+      </Pressable>
+    );
+  },
+);

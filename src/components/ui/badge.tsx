@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import { View, type ViewProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
@@ -17,13 +17,16 @@ export type BadgeProps = ViewProps & {
   children?: ReactNode;
 };
 
-export function Badge({ className, variant = 'secondary', children, ...props }: BadgeProps) {
-  return (
-    <View
-      className={cn('flex-row items-center rounded-full px-2 py-0.5', variantClasses[variant], className)}
-      {...props}
-    >
-      {children}
-    </View>
-  );
-}
+export const Badge = forwardRef<React.ElementRef<typeof View>, BadgeProps>(
+  function Badge({ className, variant = 'secondary', children, ...props }, ref) {
+    return (
+      <View
+        ref={ref}
+        className={cn('flex-row items-center rounded-full px-2 py-0.5', variantClasses[variant], className)}
+        {...props}
+      >
+        {children}
+      </View>
+    );
+  },
+);

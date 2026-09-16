@@ -144,7 +144,7 @@ export function ToolOutput({ className, output, errorText }: ToolOutputProps) {
   if (typeof output === 'object' && output !== null && !isValidElement(output)) {
     content = <CodeBlock code={safeStringify(output)} language="json" />;
   } else if (typeof output === 'string') {
-    content = <CodeBlock code={output} language="text" />;
+    content = <CodeBlock code={output} language="plaintext" />;
   } else {
     content = <Text className="text-sm text-foreground">{safeStringify(output)}</Text>;
   }

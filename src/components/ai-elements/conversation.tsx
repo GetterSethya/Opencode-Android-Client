@@ -221,7 +221,7 @@ export function ConversationDownload({ messages, className }: ConversationDownlo
     <Pressable
       accessibilityLabel="Share conversation"
       className={cn(
-        'h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white',
+        'h-9 w-9 items-center justify-center rounded-full border border-border bg-surface',
         className,
       )}
       onPress={handleShare}

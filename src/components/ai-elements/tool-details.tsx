@@ -160,7 +160,7 @@ export function ReadTool({
         />
       ) : null}
       {typeof output === 'string' && output ? (
-        <CodeBlock code={output} language={filePath ? languageForPath(filePath) : 'text'} />
+        <CodeBlock code={output} language={filePath ? languageForPath(filePath) : 'plaintext'} />
       ) : errorText ? (
         <ToolOutput output={output} errorText={errorText} />
       ) : (
@@ -209,7 +209,7 @@ export function WriteTool({
         />
       ) : null}
       {preview ? (
-        <CodeBlock code={preview} language={filePath ? languageForPath(filePath) : 'text'} />
+        <CodeBlock code={preview} language={filePath ? languageForPath(filePath) : 'plaintext'} />
       ) : null}
       {typeof output === 'string' && output ? (
         <Text className="px-1 text-xs text-muted">{output}</Text>
@@ -245,7 +245,7 @@ export function EditTool({
   const filePath = asString(record.filePath);
   const oldString = asString(record.oldString);
   const newString = asString(record.newString);
-  const language = filePath ? languageForPath(filePath) : 'text';
+  const language = filePath ? languageForPath(filePath) : 'plaintext';
   return (
     <View className="gap-3">
       {filePath ? (
@@ -326,7 +326,7 @@ export function WebfetchTool({
         format === 'markdown' ? (
           <CappedMarkdown text={output} />
         ) : (
-          <CodeBlock code={output} language="text" />
+          <CodeBlock code={output} language="plaintext" />
         )
       ) : errorText ? (
         <ToolOutput output={output} errorText={errorText} />

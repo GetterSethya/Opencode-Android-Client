@@ -174,7 +174,7 @@ export function ModelSelectorContent({
       <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
         <Pressable
           accessibilityViewIsModal
-          className={cn('max-h-[75%] rounded-t-2xl bg-white p-2', className)}
+          className={cn('max-h-[75%] rounded-t-2xl bg-surface p-2', className)}
           onPress={() => {
             // Keep taps inside the panel from dismissing the modal.
           }}
@@ -207,10 +207,10 @@ export function ModelSelectorInput({
   const { query, setQuery } = useModelSelector();
 
   return (
-    <View className="flex-row items-center gap-2 border-b border-zinc-200 px-3">
+    <View className="flex-row items-center gap-2 border-b border-border px-3">
       <SearchIcon size={16} color="#71717a" />
       <TextInput
-        className={cn('h-11 flex-1 text-sm text-zinc-900', className)}
+        className={cn('h-11 flex-1 text-sm text-foreground', className)}
         onChangeText={(text) => {
           setQuery(text);
           onChangeText?.(text);
@@ -255,7 +255,7 @@ export function ModelSelectorEmpty({ className, children }: ModelSelectorEmptyPr
 
   return (
     <View className={cn('items-center justify-center p-4', className)}>
-      {children ?? <Text className="text-sm text-zinc-500">No results found.</Text>}
+      {children ?? <Text className="text-sm text-muted">No results found.</Text>}
     </View>
   );
 }
@@ -270,7 +270,7 @@ export function ModelSelectorGroup({ heading, className, children }: ModelSelect
   return (
     <View className={cn('py-1', className)}>
       {heading ? (
-        <Text className="px-3 py-1 text-xs font-medium uppercase text-zinc-500">{heading}</Text>
+        <Text className="px-3 py-1 text-xs font-medium uppercase text-muted">{heading}</Text>
       ) : null}
       {children}
     </View>
@@ -346,7 +346,7 @@ export type ModelSelectorShortcutProps = TextProps & {
 
 export function ModelSelectorShortcut({ className, children, ...props }: ModelSelectorShortcutProps) {
   return (
-    <Text className={cn('text-xs text-zinc-500', className)} {...props}>
+    <Text className={cn('text-xs text-muted', className)} {...props}>
       {children}
     </Text>
   );
@@ -357,7 +357,7 @@ export type ModelSelectorSeparatorProps = ViewProps & {
 };
 
 export function ModelSelectorSeparator({ className, ...props }: ModelSelectorSeparatorProps) {
-  return <View className={cn('h-px bg-zinc-200', className)} {...props} />;
+  return <View className={cn('h-px bg-border', className)} {...props} />;
 }
 
 export type ModelSelectorNameProps = TextProps & {
