@@ -368,17 +368,6 @@ function RenameSessionSheet({
   onClose: () => void;
   onRename: (title: string) => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const colors = useThemeColors();
-  const [title, setTitle] = useState('');
-
-  useEffect(() => {
-    if (session) {
-      setTitle(session.title);
-    }
-  }, [session]);
-
-  const trimmed = title.trim();
   return (
     <Modal
       transparent
@@ -387,9 +376,37 @@ function RenameSessionSheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end">
-        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-        <KeyboardAvoidingView behavior="padding">
+      {/* Keyed by session id so the draft initializes from the session title. */}
+      {session ? (
+        <RenameSessionContent
+          key={session.id}
+          initialTitle={session.title}
+          onClose={onClose}
+          onRename={onRename}
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
+function RenameSessionContent({
+  initialTitle,
+  onClose,
+  onRename,
+}: {
+  initialTitle: string;
+  onClose: () => void;
+  onRename: (title: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
+  const [title, setTitle] = useState(initialTitle);
+
+  const trimmed = title.trim();
+  return (
+    <View className="flex-1 justify-end">
+      <Pressable className="flex-1 bg-black/40" onPress={onClose} />
+      <KeyboardAvoidingView behavior="padding">
           <View
             className="rounded-t-3xl bg-surface pt-4"
             style={{
@@ -426,7 +443,6 @@ function RenameSessionSheet({
           </View>
         </KeyboardAvoidingView>
       </View>
-    </Modal>
   );
 }
 

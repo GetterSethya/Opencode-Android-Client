@@ -40,7 +40,6 @@ export function useReasoning() {
   return context;
 }
 
-const AUTO_CLOSE_DELAY = 1000;
 const MS_IN_S = 1000;
 
 export type ReasoningProps = {
@@ -57,14 +56,13 @@ export function Reasoning({
   className,
   isStreaming = false,
   open,
-  defaultOpen,
+  defaultOpen = false,
   onOpenChange,
   duration: durationProp,
   children,
 }: ReasoningProps) {
-  const isExplicitlyClosed = defaultOpen === false;
   const [isOpen, setIsOpen] = useControllableState<boolean>({
-    defaultProp: defaultOpen ?? isStreaming,
+    defaultProp: defaultOpen,
     onChange: onOpenChange,
     prop: open,
   });
@@ -73,13 +71,10 @@ export function Reasoning({
     prop: durationProp,
   });
 
-  const hasEverStreamedRef = useRef(isStreaming);
-  const [hasAutoClosed, setHasAutoClosed] = useState(false);
   const startTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isStreaming) {
-      hasEverStreamedRef.current = true;
       if (startTimeRef.current === null) {
         startTimeRef.current = Date.now();
       }
@@ -88,22 +83,6 @@ export function Reasoning({
       startTimeRef.current = null;
     }
   }, [isStreaming, setDuration]);
-
-  useEffect(() => {
-    if (isStreaming && !isOpen && !isExplicitlyClosed) {
-      setIsOpen(true);
-    }
-  }, [isStreaming, isOpen, setIsOpen, isExplicitlyClosed]);
-
-  useEffect(() => {
-    if (hasEverStreamedRef.current && !isStreaming && isOpen && !hasAutoClosed) {
-      const timer = setTimeout(() => {
-        setIsOpen(false);
-        setHasAutoClosed(true);
-      }, AUTO_CLOSE_DELAY);
-      return () => clearTimeout(timer);
-    }
-  }, [isStreaming, isOpen, setIsOpen, hasAutoClosed]);
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {

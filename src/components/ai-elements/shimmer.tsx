@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Text } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -34,8 +35,8 @@ export function Shimmer({ children, duration = 2, className }: ShimmerProps) {
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
   return (
-    <Animated.Text className={cn('text-muted', className)} style={animatedStyle}>
-      {children}
-    </Animated.Text>
+    <Animated.View style={animatedStyle}>
+      <Text className={cn('text-muted', className)}>{children}</Text>
+    </Animated.View>
   );
 }

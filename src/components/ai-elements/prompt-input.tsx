@@ -5,7 +5,7 @@ import {
   SquareIcon,
   XIcon,
 } from 'lucide-react-native';
-import { type ReactNode } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { Image, Pressable, Text, TextInput, View } from 'react-native';
 
 import type { PendingAttachment } from '@/chat/attachments';
@@ -29,6 +29,7 @@ export type PromptInputProps = {
   disabled?: boolean;
   className?: string;
   footer?: ReactNode;
+  inputRef?: Ref<TextInput>;
   /** Controlled cursor, used to place it after programmatic inserts. */
   selection?: { start: number; end: number };
   onSelectionChange?: (selection: { start: number; end: number }) => void;
@@ -48,6 +49,7 @@ export function PromptInput({
   disabled = false,
   className,
   footer,
+  inputRef,
   selection,
   onSelectionChange,
 }: PromptInputProps) {
@@ -105,6 +107,7 @@ export function PromptInput({
       ) : null}
 
       <TextInput
+        ref={inputRef}
         className="max-h-32 min-h-11 px-3 py-2 text-[15px] text-foreground"
         multiline
         value={value}

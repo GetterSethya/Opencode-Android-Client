@@ -229,15 +229,17 @@ export function useChatEventSubscription({
       if (
         parsed.type === 'message.updated' ||
         parsed.type === 'message.part.updated' ||
+        parsed.type === 'message.part.delta' ||
         parsed.type === 'message.part.removed'
       ) {
         if (!sid) {
           return;
         }
         setState((prev) => applyEvent(prev, parsed, sid));
-        if (parsed.type === 'message.part.updated') {
-          const part = parsed.properties.part as OpencodePart;
-          if (part.sessionID === sid) {
+        if (parsed.type === 'message.part.updated' || parsed.type === 'message.part.delta') {
+          const props = parsed.properties as { sessionID?: string; part?: OpencodePart };
+          const eventSid = props.part?.sessionID ?? props.sessionID;
+          if (eventSid === sid) {
             setStatus((current) => (current === 'ready' ? 'streaming' : current));
           }
         }

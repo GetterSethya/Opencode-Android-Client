@@ -75,20 +75,16 @@ export function useOpencodeChat() {
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const messageQueueRef = useRef<QueuedMessage[]>([]);
 
+  // Mirrors kept current during render so imperative callbacks (SSE handlers,
+  // queued flush) read the latest values without being re-created per update.
   const activeSessionIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    activeSessionIdRef.current = activeSessionId;
-  }, [activeSessionId]);
+  activeSessionIdRef.current = activeSessionId;
 
-  // Mirror of `state` for callbacks that must read the latest messages without
-  // being re-created on every streamed part.
   const stateRef = useRef<MessageState>({});
   stateRef.current = state;
 
   const sessionsRef = useRef<OpencodeSession[]>([]);
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
+  sessionsRef.current = sessions;
 
   /**
    * Reconciles pending question requests with the server. The SSE

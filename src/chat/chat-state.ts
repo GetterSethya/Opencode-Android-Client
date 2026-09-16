@@ -180,6 +180,42 @@ export function applyEvent(state: MessageState, event: OpencodeEvent, sessionId:
       parts[part.id] = part;
       return { ...state, [part.messageID]: { ...existing, parts } };
     }
+    case 'message.part.delta': {
+      const { sessionID, messageID, partID, field, delta } = event.properties as {
+        sessionID: string;
+        messageID: string;
+        partID: string;
+        field: string;
+        delta: string;
+      };
+      if (sessionID !== sessionId || !delta) {
+        return state;
+      }
+      const existing = state[messageID] ?? {
+        info: {
+          id: messageID,
+          sessionID: sessionId,
+          role: 'assistant' as const,
+          time: { created: Date.now() },
+        },
+        parts: {},
+      };
+      const existingPart = existing.parts[partID] ?? {
+        id: partID,
+        sessionID,
+        messageID,
+        type: 'text' as const,
+        text: '',
+      };
+      let updatedPart = existingPart;
+      if (existingPart.type === 'text' && field === 'text') {
+        updatedPart = { ...existingPart, text: (existingPart.text || '') + delta };
+      } else if (existingPart.type === 'reasoning' && (field === 'text' || field === 'reasoning')) {
+        updatedPart = { ...existingPart, text: (existingPart.text || '') + delta };
+      }
+      const parts = { ...existing.parts, [partID]: updatedPart };
+      return { ...state, [messageID]: { ...existing, parts } };
+    }
     case 'message.part.removed': {
       const { messageID, partID } = event.properties as { messageID: string; partID: string };
       const existing = state[messageID];
@@ -219,16 +255,22 @@ function toMessageError(error: OpencodeMessageInfo['error']): UIMessage['error']
   };
 }
 
+const messageCache = new WeakMap<MessageRecord, UIMessage>();
+
 export function deriveMessages(state: MessageState): UIMessage[] {
   return Object.values(state)
     .sort((a, b) => a.info.time.created - b.info.time.created)
     .map((record) => {
+      const cached = messageCache.get(record);
+      if (cached) {
+        return cached;
+      }
       const { info } = record;
       const durationMs =
         info.role === 'assistant' && info.time.completed
           ? info.time.completed - info.time.created
           : undefined;
-      return {
+      const derived: UIMessage = {
         id: info.id,
         role: info.role,
         model: info.modelID,
@@ -238,6 +280,8 @@ export function deriveMessages(state: MessageState): UIMessage[] {
           .map(partToUI)
           .filter((part): part is UIMessagePart => part !== null),
       };
+      messageCache.set(record, derived);
+      return derived;
     });
 }
 

@@ -338,6 +338,16 @@ export type OpencodeQuestionRequest = {
 export type OpencodeEvent =
   | { type: 'message.updated'; properties: { info: OpencodeMessageInfo } }
   | { type: 'message.part.updated'; properties: { part: OpencodePart; delta?: string } }
+  | {
+      type: 'message.part.delta';
+      properties: {
+        sessionID: string;
+        messageID: string;
+        partID: string;
+        field: string;
+        delta: string;
+      };
+    }
   | { type: 'message.part.removed'; properties: { messageID: string; partID: string } }
   | { type: 'session.idle'; properties: { sessionID: string } }
   | { type: 'session.status'; properties: { sessionID: string; status: { type: string } } }

@@ -5,7 +5,7 @@ import {
   GitForkIcon,
   Trash2Icon,
 } from 'lucide-react-native';
-import { memo, useEffect, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { Clipboard, Image, Text, View } from 'react-native';
 
 import type { PermissionReply } from '@/chat/opencode';
@@ -92,12 +92,7 @@ export const MessageItem = memo(function MessageItem({
   const isUser = message.role === 'user';
   const isStreaming = isLast && (status === 'streaming' || status === 'submitted');
   const [copied, setCopied] = useState(false);
-
-  // LegendList recycles row components across messages, so transient local
-  // state must be cleared when a row is reused for a different message.
-  useEffect(() => {
-    setCopied(false);
-  }, [message.id]);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messageText = message.parts
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
@@ -107,7 +102,10 @@ export const MessageItem = memo(function MessageItem({
   const copyResponse = () => {
     Clipboard.setString(messageText);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedTimerRef.current) {
+      clearTimeout(copiedTimerRef.current);
+    }
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
   };
 
   const isForkingThis = forkTarget === message.id;

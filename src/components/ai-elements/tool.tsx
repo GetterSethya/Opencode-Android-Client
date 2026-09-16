@@ -7,7 +7,7 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react-native';
-import { isValidElement, useEffect, useState, type ReactNode } from 'react';
+import { isValidElement, useState, type ReactNode } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
 import type { ToolState } from '@/chat/types';
@@ -269,11 +269,46 @@ export function QuestionTool({
   answers?: string[][];
   answered?: boolean;
   pending?: boolean;
-  /** Clears local selection when the row is recycled or the request changes. */
+  /** Remounts the form so local selection is cleared for a new request. */
   resetKey?: string;
   /** Called with the per-question answers when the user submits. */
   onAnswer?: (answers: string[][]) => Promise<void>;
   /** Dismisses the request without answering (rejects it server-side). */
+  onReject?: () => Promise<void>;
+  className?: string;
+}) {
+  if (questions.length === 0) {
+    return null;
+  }
+
+  return (
+    <QuestionToolBody
+      key={`${resetKey ?? ''}:${pending}`}
+      questions={questions}
+      answers={answers}
+      answered={answered}
+      pending={pending}
+      onAnswer={onAnswer}
+      onReject={onReject}
+      className={className}
+    />
+  );
+}
+
+function QuestionToolBody({
+  questions,
+  answers = [],
+  answered = false,
+  pending = false,
+  onAnswer,
+  onReject,
+  className,
+}: {
+  questions: QuestionToolItem[];
+  answers?: string[][];
+  answered?: boolean;
+  pending?: boolean;
+  onAnswer?: (answers: string[][]) => Promise<void>;
   onReject?: () => Promise<void>;
   className?: string;
 }) {
@@ -284,18 +319,6 @@ export function QuestionTool({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelected([]);
-    setCustomText([]);
-    setSubmitting(false);
-    setSubmitted(false);
-    setSubmitError(null);
-  }, [resetKey, pending]);
-
-  if (questions.length === 0) {
-    return null;
-  }
 
   const toggleOption = (questionIndex: number, label: string) => {
     setSubmitError(null);

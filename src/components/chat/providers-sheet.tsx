@@ -5,7 +5,6 @@ import {
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import Animated, { LinearTransition } from 'react-native-reanimated';
 import {
   Modal,
   Pressable,
@@ -452,8 +451,7 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
       <View className="flex-1 justify-end">
         <Pressable className="flex-1 bg-black/40" onPress={onClose} />
         <KeyboardAvoidingView behavior="padding">
-          <Animated.View
-            layout={LinearTransition.duration(240)}
+          <View
             className="rounded-t-3xl bg-surface pt-4"
             style={{
               paddingBottom: insets.bottom + 16,
@@ -540,7 +538,7 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
                 <CustomProviderForm server={activeServer} onDone={onClose} />
               ) : null}
             </ScrollView>
-          </Animated.View>
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>

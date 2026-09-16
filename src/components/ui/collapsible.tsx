@@ -76,8 +76,10 @@ export function CollapsibleContent({ className, children, ...props }: Collapsibl
   }
 
   return (
-    <Animated.View entering={FadeIn.duration(150)} className={cn(className)} {...props}>
-      {children}
+    <Animated.View entering={FadeIn.duration(150)}>
+      <View className={cn(className)} {...props}>
+        {children}
+      </View>
     </Animated.View>
   );
 }

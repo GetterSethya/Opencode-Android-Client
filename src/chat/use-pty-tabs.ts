@@ -64,7 +64,7 @@ export function usePtyTerminal({
   });
   const running = useMemo(() => listQuery.data ?? [], [listQuery.data]);
 
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [requestedActiveId, setRequestedActiveId] = useState<string | null>(null);
   const [exited, setExited] = useState<{ id: string; title: string }[]>([]);
   const [buffers, setBuffers] = useState<Record<string, PtyBuffer>>({});
   const [liveStatus, setLiveStatus] = useState<PtyTabStatus>('connecting');
@@ -126,13 +126,13 @@ export function usePtyTerminal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listQuery.data]);
 
-  // Default to the first running tab; fall back when the active one is gone.
-  useEffect(() => {
-    if (activeId && (running.some((info) => info.id === activeId) || exitedIds.has(activeId))) {
-      return;
-    }
-    setActiveId(running[0]?.id ?? exited[0]?.id ?? null);
-  }, [activeId, running, exited, exitedIds]);
+  // The last explicit selection stays active while it still exists; otherwise
+  // fall back to the first running (then exited) tab.
+  const activeId =
+    requestedActiveId &&
+    (running.some((info) => info.id === requestedActiveId) || exitedIds.has(requestedActiveId))
+      ? requestedActiveId
+      : (running[0]?.id ?? exited[0]?.id ?? null);
 
   const flushPending = useCallback(() => {
     flushScheduledRef.current = false;
@@ -185,9 +185,9 @@ export function usePtyTerminal({
     });
   }, []);
 
-  useEffect(() => {
-    buffersRef.current = buffers;
-  }, [buffers]);
+  // Kept current during render so the socket effect can read the latest
+  // buffers without reconnecting on every output chunk.
+  buffersRef.current = buffers;
 
   const activeRunning = running.find((info) => info.id === activeId) ?? null;
   const activeExited = exited.find((tab) => tab.id === activeId) ?? null;
@@ -366,7 +366,7 @@ export function usePtyTerminal({
       freshRef.current.add(info.id);
       titlesRef.current[info.id] = info.title;
       await queryClient.invalidateQueries({ queryKey: ptyKey(server) });
-      setActiveId(info.id);
+      setRequestedActiveId(info.id);
       setLiveStatus('connecting');
       return info.id;
     } finally {
@@ -403,16 +403,7 @@ export function usePtyTerminal({
         delete next[id];
         return next;
       });
-      setActiveId((prev) => {
-        if (prev !== id) {
-          return prev;
-        }
-        const rest = running
-          .filter((info) => info.id !== id)
-          .map((info) => info.id)
-          .concat(exited.filter((tab) => tab.id !== id).map((tab) => tab.id));
-        return rest[0] ?? null;
-      });
+      setRequestedActiveId((prev) => (prev === id ? null : prev));
       await queryClient.invalidateQueries({ queryKey: ptyKey(server) });
     },
     [activeRunning, client, exited, exitedIds, queryClient, running, server],
@@ -459,7 +450,7 @@ export function usePtyTerminal({
     tabs,
     active,
     activeId,
-    selectTab: setActiveId,
+    selectTab: setRequestedActiveId,
     activeText: activeBuffer.text,
     canSend: !!activeRunning && liveStatus === 'open',
     creating: busy,

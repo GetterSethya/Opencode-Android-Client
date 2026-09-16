@@ -37,32 +37,6 @@ export function QuickOpenSheet({
   server: ServerConfig;
   onInsertMention: (path: string) => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
-  const colors = useThemeColors();
-  const keyboardHeight = useKeyboardHeight();
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-
-  useEffect(() => {
-    if (visible) {
-      setQuery('');
-      setDebouncedQuery('');
-    }
-  }, [visible]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 200);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const search = useFileSearch(server, debouncedQuery, visible);
-  const results = search.data ?? [];
-  const listMaxHeight =
-    keyboardHeight > 0
-      ? Math.max(160, height - keyboardHeight - 300)
-      : Math.min(height * 0.5, 400);
-
   return (
     <Modal
       transparent
@@ -71,9 +45,50 @@ export function QuickOpenSheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end">
-        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-        <KeyboardAvoidingView behavior="padding">
+      {/* Mounted only while open so each open starts from an empty query. */}
+      {visible ? (
+        <QuickOpenSheetContent
+          server={server}
+          onClose={onClose}
+          onInsertMention={onInsertMention}
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
+function QuickOpenSheetContent({
+  onClose,
+  server,
+  onInsertMention,
+}: {
+  onClose: () => void;
+  server: ServerConfig;
+  onInsertMention: (path: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const colors = useThemeColors();
+  const keyboardHeight = useKeyboardHeight();
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 200);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const search = useFileSearch(server, debouncedQuery, true);
+  const results = search.data ?? [];
+  const listMaxHeight =
+    keyboardHeight > 0
+      ? Math.max(160, height - keyboardHeight - 300)
+      : Math.min(height * 0.5, 400);
+
+  return (
+    <View className="flex-1 justify-end">
+      <Pressable className="flex-1 bg-black/40" onPress={onClose} />
+      <KeyboardAvoidingView behavior="padding">
           <View
             className="rounded-t-3xl bg-surface pt-4"
             style={{
@@ -153,6 +168,5 @@ export function QuickOpenSheet({
           </View>
         </KeyboardAvoidingView>
       </View>
-    </Modal>
   );
 }

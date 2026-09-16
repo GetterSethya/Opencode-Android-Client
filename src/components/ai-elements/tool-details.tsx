@@ -5,7 +5,7 @@ import {
   ShieldAlertIcon,
   TerminalIcon,
 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { PendingPermission } from '@/chat/use-opencode-chat';
@@ -394,19 +394,29 @@ export function PermissionCard({
 }: {
   permission: PendingPermission;
   onReply: (reply: PermissionReply) => Promise<void>;
-  /** Clears local state when the row is recycled or the request changes. */
+  /** Remounts the card so local reply state is cleared for a new request. */
   resetKey?: string;
+}) {
+  return (
+    <PermissionCardBody
+      key={resetKey ?? permission.requestID}
+      permission={permission}
+      onReply={onReply}
+    />
+  );
+}
+
+function PermissionCardBody({
+  permission,
+  onReply,
+}: {
+  permission: PendingPermission;
+  onReply: (reply: PermissionReply) => Promise<void>;
 }) {
   const colors = useThemeColors();
   const [submitting, setSubmitting] = useState<PermissionReply | null>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSubmitting(null);
-    setSent(false);
-    setError(null);
-  }, [resetKey]);
 
   const reply = async (choice: PermissionReply) => {
     if (submitting || sent) {

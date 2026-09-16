@@ -1,8 +1,3 @@
-import {
-  LegendList,
-  type LegendListRef,
-  type LegendListRenderItemProps,
-} from '@legendapp/list/react-native';
 import { ArrowDownIcon, DownloadIcon } from 'lucide-react-native';
 import {
   createContext,
@@ -11,11 +6,15 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import {
+  FlatList,
+  type LayoutChangeEvent,
+  type ListRenderItem,
   Pressable,
   Share,
   Text,
@@ -25,7 +24,6 @@ import {
 } from 'react-native';
 
 import type { UIMessage } from '@/chat/types';
-import { setAdaptiveRenderMode } from '@/chat/adaptive-render';
 import { Spinner } from '@/components/ui/spinner';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
@@ -47,7 +45,7 @@ function useConversationContext() {
 
 export type ConversationProps = {
   messages: UIMessage[];
-  renderItem: (props: LegendListRenderItemProps<UIMessage>) => ReactNode;
+  renderItem: ListRenderItem<UIMessage>;
   className?: string;
   onStartReached?: () => void;
   isLoadingOlder?: boolean;
@@ -65,18 +63,98 @@ export function Conversation({
   hasMoreOlder = false,
   ListFooterComponent,
 }: ConversationProps) {
-  const listRef = useRef<LegendListRef | null>(null);
+  const listRef = useRef<FlatList<UIMessage> | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // FlatList has no onStartReached, so latch the callback until the user
+  // scrolls away from the top and back to avoid firing it on every scroll event.
+  const startReachedRef = useRef(false);
+  // Auto-follow is active whenever the user is near the bottom.
+  // Scrolling up unpins; scrolling back to the bottom re-pins.
+  const pinnedToBottomRef = useRef(true);
+  // While the user is actively dragging the screen, auto-scroll is completely
+  // disabled so it never fights the user's finger.
+  const isDraggingRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
+    isDraggingRef.current = false;
+    pinnedToBottomRef.current = true;
+    setIsAtBottom(true);
     listRef.current?.scrollToEnd({ animated: true });
   }, []);
 
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-    const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-    setIsAtBottom(distanceFromBottom < 48);
+  const scrollToEndIfPinned = useCallback((animated = false) => {
+    if (pinnedToBottomRef.current && !isDraggingRef.current) {
+      listRef.current?.scrollToEnd({ animated });
+    }
   }, []);
+
+  // Returns true when the list is scrolled within ~one row of the end.
+  const computeAtBottom = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    return contentSize.height - contentOffset.y - layoutMeasurement.height < 48;
+  }, []);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const atBottom = computeAtBottom(event);
+      setIsAtBottom(atBottom);
+      if (atBottom && !isDraggingRef.current) {
+        pinnedToBottomRef.current = true;
+      }
+
+      // Only trigger loading older messages when the user has explicitly
+      // scrolled up to the top and the list actually has scrollable content.
+      const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+      if (!onStartReached || pinnedToBottomRef.current || contentSize.height <= layoutMeasurement.height) {
+        return;
+      }
+
+      const distanceFromTop = contentOffset.y;
+      if (distanceFromTop <= 0) {
+        if (!startReachedRef.current) {
+          startReachedRef.current = true;
+          onStartReached();
+        }
+      } else if (distanceFromTop > 100) {
+        startReachedRef.current = false;
+      }
+    },
+    [computeAtBottom, onStartReached],
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    // Immediately unpin and lock out programmatic scrolling while user drags.
+    isDraggingRef.current = true;
+    pinnedToBottomRef.current = false;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isDraggingRef.current = false;
+      const atBottom = computeAtBottom(event);
+      pinnedToBottomRef.current = atBottom;
+      setIsAtBottom(atBottom);
+    },
+    [computeAtBottom],
+  );
+
+  const handleMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isDraggingRef.current = false;
+      const atBottom = computeAtBottom(event);
+      pinnedToBottomRef.current = atBottom;
+      setIsAtBottom(atBottom);
+    },
+    [computeAtBottom],
+  );
+
+  const handleContentSizeChange = useCallback(() => {
+    scrollToEndIfPinned();
+  }, [scrollToEndIfPinned]);
+
+  useEffect(() => {
+    scrollToEndIfPinned();
+  }, [messages, scrollToEndIfPinned]);
 
   const contextValue = useMemo(
     () => ({ isAtBottom, scrollToBottom }),
@@ -86,34 +164,16 @@ export function Conversation({
   return (
     <ConversationContext.Provider value={contextValue}>
       <View className={cn('relative flex-1', className)}>
-        <LegendList
+        <FlatList
           ref={listRef}
           data={messages}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
-          estimatedItemSize={140}
-          // Reusing item components keeps fast scrolling smooth; with it off
-          // LegendList mounts every row from scratch, which drops frames badly
-          // enough that rows appear blank until they finish rendering.
-          recycleItems
-          // LegendList's default pre-render buffer is only 250px. Chat rows are
-          // tall, so a fast fling outruns rendering and rows show up blank
-          // until they catch up. Render further ahead instead.
-          drawDistance={2000}
-          // Rows do markdown + syntax highlighting, which is far too slow to
-          // render from scratch on every row a fast fling brings in. Tell rows
-          // when we're flinging so they can render plain text instead.
-          experimental_adaptiveRender={{
-            enterVelocity: 2,
-            exitVelocity: 0.5,
-            exitDelay: 200,
-            onChange: setAdaptiveRenderMode,
-          }}
-          maintainScrollAtEnd
-          maintainVisibleContentPosition
-          onStartReached={onStartReached}
-          onStartReachedThreshold={0.2}
           onScroll={handleScroll}
+          onScrollBeginDrag={handleScrollBeginDrag}
+          onScrollEndDrag={handleScrollEndDrag}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          onContentSizeChange={handleContentSizeChange}
           scrollEventThrottle={16}
           contentContainerStyle={{ gap: 24, padding: 16 }}
           style={{ flex: 1 }}

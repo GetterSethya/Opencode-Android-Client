@@ -24,7 +24,6 @@ import {
   View,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { OpencodeSession, VcsFileDiff } from '@/chat/opencode';
@@ -104,8 +103,7 @@ export function SessionPanelSheet({
       <View className="flex-1 justify-end">
         <Pressable className="flex-1 bg-black/40" onPress={onClose} />
         <KeyboardAvoidingView behavior="padding">
-          <Animated.View
-            layout={LinearTransition.duration(240)}
+          <View
             className="rounded-t-3xl bg-surface pt-4"
             style={{
               paddingBottom: insets.bottom + 16,
@@ -162,7 +160,7 @@ export function SessionPanelSheet({
                 ) : null}
               </ScrollView>
             )}
-          </Animated.View>
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>

@@ -8,7 +8,7 @@ import {
   XIcon,
 } from 'lucide-react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Clipboard, Pressable, Text, View } from 'react-native';
+import { Clipboard, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -116,6 +116,7 @@ export function ChatScreen() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const commandsQuery = useCommands(activeServer, !!activeSessionId);
   const drawerRef = useRef<SessionsDrawerHandle>(null);
+  const promptInputRef = useRef<TextInput | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
@@ -350,6 +351,8 @@ export function ChatScreen() {
     }
     setInput('');
     setAttachments([]);
+    Keyboard.dismiss();
+    promptInputRef.current?.blur();
   };
 
   const handleRunShell = useCallback(
@@ -523,6 +526,7 @@ export function ChatScreen() {
 
             <View className="border-t border-border p-3">
               <PromptInput
+                inputRef={promptInputRef}
                 value={input}
                 onChangeText={setInput}
                 onSubmit={handleSubmit}

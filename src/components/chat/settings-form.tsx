@@ -9,7 +9,7 @@ import {
   SunIcon,
   Trash2Icon,
 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -54,6 +54,27 @@ const inputClass =
   'rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground';
 
 export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsFormProps) {
+  return (
+    <Modal
+      transparent
+      statusBarTranslucent
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      {/* Mounted only while open so each open starts on the main settings view. */}
+      {visible ? <SettingsFormContent onClose={onClose} onOpenProviders={onOpenProviders} /> : null}
+    </Modal>
+  );
+}
+
+function SettingsFormContent({
+  onClose,
+  onOpenProviders,
+}: {
+  onClose: () => void;
+  onOpenProviders?: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const colors = useThemeColors();
@@ -77,13 +98,6 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
   const [editing, setEditing] = useState<ServerConfig | null>(null);
   const [draft, setDraft] = useState<Omit<ServerConfig, 'id'>>(emptyServer);
   const [isFormOpen, setFormOpen] = useState(false);
-
-  useEffect(() => {
-    if (visible) {
-      setEditing(null);
-      setFormOpen(false);
-    }
-  }, [visible]);
 
   const startAdd = () => {
     setEditing(null);
@@ -140,14 +154,7 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
   };
 
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View className="flex-1 justify-end">
+    <View className="flex-1 justify-end">
         <Pressable className="flex-1 bg-black/40" onPress={onClose} />
         <KeyboardAvoidingView behavior="padding">
           <View
@@ -337,7 +344,6 @@ export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsForm
           </View>
         </KeyboardAvoidingView>
       </View>
-    </Modal>
   );
 }
 
