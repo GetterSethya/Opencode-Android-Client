@@ -382,3 +382,41 @@ export type OpencodeClientOptions = {
   password?: string;
   directory?: string;
 };
+
+/** A persistent shell session backed by the server's PTY service. */
+export type PtyInfo = {
+  id: string;
+  title: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  status: 'running' | 'exited';
+  pid: number;
+  exitCode?: number;
+};
+
+export type PtyCreateInput = {
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  title?: string;
+  env?: Record<string, string>;
+};
+
+export type PtyUpdateInput = {
+  title?: string;
+  size?: { rows: number; cols: number };
+};
+
+/** A shell binary the server can spawn PTYs with. */
+export type PtyShell = {
+  path: string;
+  name: string;
+  acceptable: boolean;
+};
+
+/** Short-lived ticket for opening the PTY WebSocket. */
+export type PtyConnectToken = {
+  ticket: string;
+  expires_in: number;
+};

@@ -21,6 +21,11 @@ import type {
   ProviderAuthMethod,
   ProviderCatalogResponse,
   ProviderOAuthAuthorization,
+  PtyConnectToken,
+  PtyCreateInput,
+  PtyInfo,
+  PtyShell,
+  PtyUpdateInput,
   VcsFileDiff,
   VcsFileStatus,
 } from './opencode-types';
@@ -122,14 +127,18 @@ function buildUrl(baseUrl: string, path: string, directory?: string) {
 export class OpencodeClient {
   private readonly baseUrl: string;
   private readonly directory?: string;
+  private readonly username: string;
+  private readonly password: string;
   private readonly headers: Record<string, string>;
 
   constructor(options: OpencodeClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
     this.directory = options.directory || undefined;
+    this.username = options.username || 'opencode';
+    this.password = options.password || '';
     this.headers = { 'Content-Type': 'application/json' };
-    if (options.password) {
-      const credentials = base64Encode(`${options.username || 'opencode'}:${options.password}`);
+    if (this.password) {
+      const credentials = base64Encode(`${this.username}:${this.password}`);
       this.headers.Authorization = `Basic ${credentials}`;
     }
   }
@@ -497,5 +506,84 @@ export class OpencodeClient {
         model: input.model,
       }),
     });
+  }
+
+  /**
+   * Persistent shell sessions (server PTY service). Only running sessions
+   * are listed; exited ones vanish until removed explicitly.
+   */
+  listPtys() {
+    return this.request<PtyInfo[]>('/pty');
+  }
+
+  createPty(input: PtyCreateInput = {}) {
+    return this.request<PtyInfo>('/pty', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  getPty(ptyID: string) {
+    return this.request<PtyInfo>(`/pty/${encodeURIComponent(ptyID)}`);
+  }
+
+  updatePty(ptyID: string, input: PtyUpdateInput) {
+    return this.request<PtyInfo>(`/pty/${encodeURIComponent(ptyID)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  }
+
+  removePty(ptyID: string) {
+    return this.request<boolean>(`/pty/${encodeURIComponent(ptyID)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  listPtyShells() {
+    return this.request<PtyShell[]>('/pty/shells');
+  }
+
+  /**
+   * Short-lived ticket for the PTY WebSocket. Returns null when the server
+   * predates the ticket flow (404/405) so callers connect without one;
+   * other failures throw. RN fetch sends no Origin header, which the
+   * server treats as allowed.
+   */
+  async createPtyConnectToken(ptyID: string): Promise<PtyConnectToken | null> {
+    const response = await fetch(this.url(`/pty/${encodeURIComponent(ptyID)}/connect-token`), {
+      method: 'POST',
+      headers: { ...this.headers, 'x-opencode-ticket': '1' },
+    });
+    if (response.status === 404 || response.status === 405) {
+      return null;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`opencode ${response.status}: ${text || response.statusText}`);
+    }
+    const data = (await response.json()) as Partial<PtyConnectToken>;
+    return typeof data.ticket === 'string' ? (data as PtyConnectToken) : null;
+  }
+
+  /**
+   * WebSocket URL for live PTY I/O. The RN socket cannot send custom
+   * headers, so password auth rides the `auth_token` query param (same as
+   * the web client); the ticket (when issued) skips auth for the upgrade.
+   */
+  ptyConnectUrl(ptyID: string, options: { cursor?: number; ticket?: string } = {}) {
+    const base = this.baseUrl.replace(/^http/, 'ws');
+    const params = new URLSearchParams();
+    if (this.directory) {
+      params.set('directory', this.directory);
+    }
+    params.set('cursor', String(options.cursor ?? -1));
+    if (options.ticket) {
+      params.set('ticket', options.ticket);
+    }
+    if (this.password) {
+      params.set('auth_token', base64Encode(`${this.username}:${this.password}`));
+    }
+    return `${base}/pty/${encodeURIComponent(ptyID)}/connect?${params.toString()}`;
   }
 }

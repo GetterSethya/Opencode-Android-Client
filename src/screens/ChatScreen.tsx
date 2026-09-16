@@ -3,6 +3,7 @@ import {
   ClockIcon,
   EllipsisVerticalIcon,
   SlashIcon,
+  SquareTerminalIcon,
   TerminalIcon,
   XIcon,
 } from 'lucide-react-native';
@@ -40,6 +41,7 @@ import {
   useSessionPanels,
 } from '@/components/chat/session-panels';
 import { ShellSheet } from '@/components/chat/shell-sheet';
+import { TerminalScreen } from '@/components/chat/terminal-screen';
 import { useSessionChildren } from '@/chat/use-workspace';
 import { NewSessionSheet } from '@/components/chat/new-session-sheet';
 import { useDialog } from '@/components/ui/dialog';
@@ -111,6 +113,7 @@ export function ChatScreen() {
   } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [shellOpen, setShellOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const commandsQuery = useCommands(activeServer, !!activeSessionId);
   const drawerRef = useRef<SessionsDrawerHandle>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -436,6 +439,13 @@ export function ChatScreen() {
                 <Text className="text-xs text-muted">{statusText}</Text>
               </View>
               <Pressable
+                accessibilityLabel="Open terminal"
+                className="h-9 w-9 items-center justify-center rounded-full"
+                onPress={() => setTerminalOpen(true)}
+              >
+                <SquareTerminalIcon size={20} color={colors.foreground} />
+              </Pressable>
+              <Pressable
                 accessibilityLabel="Session options"
                 className="h-9 w-9 items-center justify-center rounded-full"
                 onPress={() => setMenuOpen(true)}
@@ -600,6 +610,11 @@ export function ChatScreen() {
         directoryLabel={activeServer.directory || 'server default folder'}
         isBusy={isBusy}
         onRun={handleRunShell}
+      />
+      <TerminalScreen
+        visible={terminalOpen}
+        server={activeServer}
+        onClose={() => setTerminalOpen(false)}
       />
       <SessionMenuSheet
         visible={menuOpen}
