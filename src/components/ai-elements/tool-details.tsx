@@ -5,7 +5,7 @@ import {
   ShieldAlertIcon,
   TerminalIcon,
 } from 'lucide-react-native';
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { PendingPermission } from '@/chat/use-opencode-chat';
@@ -40,7 +40,7 @@ export function toolFileName(path: string): string {
   return index < 0 ? trimmed : trimmed.slice(index + 1);
 }
 
-function DetailRow({
+const DetailRow = memo(function DetailRow({
   icon,
   title,
   subtitle,
@@ -71,22 +71,22 @@ function DetailRow({
       ) : null}
     </View>
   );
-}
+});
 
 /** Long markdown result with a cap so huge outputs don't stall rendering. */
 const LONG_RESULT_LIMIT = 4000;
 
-function CappedMarkdown({ text }: { text: string }) {
+const CappedMarkdown = memo(function CappedMarkdown({ text }: { text: string }) {
   const truncated = text.length > LONG_RESULT_LIMIT;
   const shown = truncated ? `${text.slice(0, LONG_RESULT_LIMIT)}\n\n… (${text.length - LONG_RESULT_LIMIT} more characters)` : text;
   return <MessageResponse>{shown}</MessageResponse>;
-}
+});
 
 /**
  * Renders the `bash` tool: the command as a terminal line plus the streamed
  * result, instead of a raw JSON parameter dump.
  */
-export function BashTool({
+export const BashTool = memo(function BashTool({
   input,
   output,
   errorText,
@@ -123,13 +123,13 @@ export function BashTool({
       )}
     </View>
   );
-}
+});
 
 /**
  * Renders the `read` tool: the file path plus the content in a viewer that
  * pages long files instead of dumping JSON.
  */
-export function ReadTool({
+export const ReadTool = memo(function ReadTool({
   input,
   output,
   errorText,
@@ -170,7 +170,7 @@ export function ReadTool({
       )}
     </View>
   );
-}
+});
 
 /**
  * Renders the `write` tool: the destination path plus a short preview of the
@@ -178,7 +178,7 @@ export function ReadTool({
  */
 const WRITE_PREVIEW_LINES = 12;
 
-export function WriteTool({
+export const WriteTool = memo(function WriteTool({
   input,
   output,
   errorText,
@@ -193,11 +193,19 @@ export function WriteTool({
   const record = asRecord(input);
   const filePath = asString(record.filePath);
   const content = asString(record.content);
-  const lines = content ? content.split('\n') : [];
-  const preview =
-    lines.length > WRITE_PREVIEW_LINES
-      ? `${lines.slice(0, WRITE_PREVIEW_LINES).join('\n')}\n… (${lines.length - WRITE_PREVIEW_LINES} more lines)`
-      : (content ?? '');
+
+  const { preview, lineCount } = useMemo(() => {
+    if (!content) {
+      return { preview: '', lineCount: 0 };
+    }
+    const lines = content.split('\n');
+    const count = lines.length;
+    const p = count > WRITE_PREVIEW_LINES
+      ? `${lines.slice(0, WRITE_PREVIEW_LINES).join('\n')}\n… (${count - WRITE_PREVIEW_LINES} more lines)`
+      : content;
+    return { preview: p, lineCount: count };
+  }, [content]);
+
   return (
     <View className="gap-3">
       {filePath ? (
@@ -205,7 +213,7 @@ export function WriteTool({
           icon={<FileIcon size={16} color={colors.muted} />}
           title={toolFileName(filePath)}
           subtitle={filePath}
-          badge={lines.length > 0 ? `${lines.length} lines` : undefined}
+          badge={lineCount > 0 ? `${lineCount} lines` : undefined}
         />
       ) : null}
       {preview ? (
@@ -222,14 +230,14 @@ export function WriteTool({
       )}
     </View>
   );
-}
+});
 
 /**
  * Renders the `edit` tool: the file being changed plus a compact diff-ish
  * view of the replacement (old → new), so the exact edit is visible instead
  * of a raw JSON dump.
  */
-export function EditTool({
+export const EditTool = memo(function EditTool({
   input,
   output,
   errorText,
@@ -245,7 +253,8 @@ export function EditTool({
   const filePath = asString(record.filePath);
   const oldString = asString(record.oldString);
   const newString = asString(record.newString);
-  const language = filePath ? languageForPath(filePath) : 'plaintext';
+  const language = useMemo(() => (filePath ? languageForPath(filePath) : 'plaintext'), [filePath]);
+
   return (
     <View className="gap-3">
       {filePath ? (
@@ -283,13 +292,13 @@ export function EditTool({
       )}
     </View>
   );
-}
+});
 
 /**
  * Renders the `webfetch` tool: the URL plus the fetched page as markdown
  * instead of an escaped JSON string.
  */
-export function WebfetchTool({
+export const WebfetchTool = memo(function WebfetchTool({
   input,
   output,
   errorText,
@@ -304,14 +313,16 @@ export function WebfetchTool({
   const record = asRecord(input);
   const url = asString(record.url);
   const format = asString(record.format) ?? 'markdown';
-  let host: string | undefined;
-  if (url) {
+
+  const host = useMemo(() => {
+    if (!url) return undefined;
     try {
-      host = new URL(url).host;
+      return new URL(url).host;
     } catch {
-      host = undefined;
+      return undefined;
     }
-  }
+  }, [url]);
+
   return (
     <View className="gap-3">
       {url ? (
@@ -337,13 +348,13 @@ export function WebfetchTool({
       )}
     </View>
   );
-}
+});
 
 /**
  * Renders the `task` (subagent) tool: which agent runs it, the delegated
  * prompt, and the subagent's result as markdown.
  */
-export function TaskTool({
+export const TaskTool = memo(function TaskTool({
   input,
   output,
   errorText,
@@ -380,14 +391,14 @@ export function TaskTool({
       )}
     </View>
   );
-}
+});
 
 /**
  * Renders a pending tool permission request under its tool part. The run is
  * paused server-side until the user allows (once or always) or rejects; the
  * card clears on the `permission.replied` event.
  */
-export function PermissionCard({
+export const PermissionCard = memo(function PermissionCard({
   permission,
   onReply,
   resetKey,
@@ -404,7 +415,7 @@ export function PermissionCard({
       onReply={onReply}
     />
   );
-}
+});
 
 function PermissionCardBody({
   permission,

@@ -14,7 +14,7 @@ import {
   SparklesIcon,
   Undo2Icon,
 } from 'lucide-react-native';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -334,7 +334,7 @@ export function SessionMenuSheet({
   );
 }
 
-function MenuRow({
+const MenuRow = memo(function MenuRow({
   icon: Icon,
   label,
   hint,
@@ -372,7 +372,7 @@ function MenuRow({
       <ChevronRightIcon size={16} color={colors.muted} />
     </Pressable>
   );
-}
+});
 
 export function useSessionPanels() {
   const [menuOpen, setMenuOpen] = useState(false);

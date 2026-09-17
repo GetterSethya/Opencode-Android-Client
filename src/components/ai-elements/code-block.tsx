@@ -1,6 +1,6 @@
 import { XIcon } from 'lucide-react-native';
 import type { Language } from 'prism-react-renderer';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,10 +30,14 @@ const PREVIEW_LINE_LIMIT = 40;
 const CODE_ROW_HEIGHT = 18;
 const CHUNK_SIZE = 50;
 
-export function CodeBlock({ code, language = 'plaintext', className }: CodeBlockProps) {
+export const CodeBlock = memo(function CodeBlock({
+  code,
+  language = 'plaintext',
+  className,
+}: CodeBlockProps) {
   const [fullOpen, setFullOpen] = useState(false);
 
-  const { preview, lineCount, truncated } = useMemo(() => {
+  const { preview, lineCount, truncated, normalized } = useMemo(() => {
     const lines = code.split('\n');
     const isTruncated = lines.length > LONG_CODE_LINE_LIMIT;
     const shown = isTruncated ? lines.slice(0, PREVIEW_LINE_LIMIT).join('\n') : code;
@@ -41,10 +45,9 @@ export function CodeBlock({ code, language = 'plaintext', className }: CodeBlock
       preview: truncateLongLines(shown),
       lineCount: lines.length,
       truncated: isTruncated,
+      normalized: normalizeLanguage(language),
     };
-  }, [code]);
-
-  const normalized = normalizeLanguage(language);
+  }, [code, language]);
 
   return (
     <View className={cn('overflow-hidden rounded-md bg-surface-secondary', className)}>
@@ -63,34 +66,37 @@ export function CodeBlock({ code, language = 'plaintext', className }: CodeBlock
           </Button>
         </View>
       ) : null}
-      {truncated ? (
+      {truncated && fullOpen ? (
         <FullScreenCodeViewer
           visible={fullOpen}
           code={code}
           language={normalized}
           title={language}
+          lineCount={lineCount}
           onClose={() => setFullOpen(false)}
         />
       ) : null}
     </View>
   );
-}
+});
 
 /**
  * Full-screen viewer for long code. Content is split into chunks so the list
  * stays virtualized with exact row offsets (fixed row height + getItemLayout).
  */
-function FullScreenCodeViewer({
+const FullScreenCodeViewer = memo(function FullScreenCodeViewer({
   visible,
   code,
   language,
   title,
+  lineCount,
   onClose,
 }: {
   visible: boolean;
   code: string;
   language: Language;
   title: string;
+  lineCount: number;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -131,7 +137,7 @@ function FullScreenCodeViewer({
             <XIcon size={20} color={colors.foreground} />
           </Pressable>
           <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
-            {title} · {code.split('\n').length} lines
+            {title} · {lineCount} lines
           </Text>
         </View>
         <View className="flex-1 p-3">
@@ -157,4 +163,4 @@ function FullScreenCodeViewer({
       </View>
     </Modal>
   );
-}
+});

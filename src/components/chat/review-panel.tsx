@@ -1,5 +1,5 @@
 import { ChevronDownIcon, ChevronRightIcon, Maximize2Icon, XIcon } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -28,26 +28,25 @@ const PREVIEW_LINE_LIMIT = 40;
 type DiffLineKind = 'add' | 'del' | 'meta' | 'hunk' | 'context';
 
 export function classifyDiffLine(line: string): DiffLineKind {
-  if (line.startsWith('@@')) {
-    return 'hunk';
+  const c = line.charCodeAt(0);
+  if (c === 64) { // '@'
+    return line.charCodeAt(1) === 64 ? 'hunk' : 'context';
+  }
+  if (c === 43) { // '+'
+    return line.startsWith('+++ ') ? 'meta' : 'add';
+  }
+  if (c === 45) { // '-'
+    return line.startsWith('--- ') ? 'meta' : 'del';
   }
   if (
     line.startsWith('diff --git') ||
     line.startsWith('index ') ||
-    line.startsWith('--- ') ||
-    line.startsWith('+++ ') ||
     line.startsWith('new file mode') ||
     line.startsWith('deleted file mode') ||
     line.startsWith('similarity index') ||
     line.startsWith('rename ')
   ) {
     return 'meta';
-  }
-  if (line.startsWith('+')) {
-    return 'add';
-  }
-  if (line.startsWith('-')) {
-    return 'del';
   }
   return 'context';
 }
@@ -59,7 +58,7 @@ export function diffBodyLines(patch: string): string[] {
   return firstHunk === -1 ? lines : lines.slice(firstHunk);
 }
 
-function DiffLine({ line }: { line: string }) {
+const DiffLine = memo(function DiffLine({ line }: { line: string }) {
   const kind = classifyDiffLine(line);
   // Minified single-line files pack megabytes into one diff line; cap what a
   // row renders (same bound as highlighted code) so giant rows can't OOM us.
@@ -90,13 +89,19 @@ function DiffLine({ line }: { line: string }) {
       </Text>
     </View>
   );
-}
+});
 
 /**
  * Non-scrolling capped preview for the sheet. Rendering a whole patch inline
  * creates thousands of views and hangs the app, so long diffs open full screen.
  */
-function DiffPreview({ patch, onOpenFullScreen }: { patch: string; onOpenFullScreen: () => void }) {
+const DiffPreview = memo(function DiffPreview({
+  patch,
+  onOpenFullScreen,
+}: {
+  patch: string;
+  onOpenFullScreen: () => void;
+}) {
   const lines = useMemo(() => diffBodyLines(patch), [patch]);
   const preview = lines.slice(0, PREVIEW_LINE_LIMIT);
   const truncated = lines.length > PREVIEW_LINE_LIMIT;
@@ -120,10 +125,10 @@ function DiffPreview({ patch, onOpenFullScreen }: { patch: string; onOpenFullScr
       </View>
     </View>
   );
-}
+});
 
 /** Full-screen diff: virtualized with fixed row height + horizontal panning. */
-export function FullScreenDiffViewer({
+export const FullScreenDiffViewer = memo(function FullScreenDiffViewer({
   diff,
   onClose,
 }: {
@@ -134,14 +139,20 @@ export function FullScreenDiffViewer({
   const colors = useThemeColors();
   const { width } = useWindowDimensions();
 
-  const lines = useMemo(() => (diff?.patch ? diffBodyLines(diff.patch) : []), [diff]);
-  const longest = useMemo(
-    () => lines.reduce((max, line) => Math.max(max, line.length), 0),
-    [lines],
-  );
-  // Monospace ~7px/char at text-xs; keep at least full width. Rows render
-  // truncated (see DiffLine), so width is computed on the capped length.
-  const contentWidth = Math.max(width, Math.min(longest, MAX_RENDERED_LINE_LENGTH) * 7 + 24);
+  const { lines, contentWidth } = useMemo(() => {
+    if (!diff?.patch) {
+      return { lines: [], contentWidth: width };
+    }
+    const l = diffBodyLines(diff.patch);
+    let longestLen = 0;
+    for (let i = 0; i < l.length; i++) {
+      if (l[i].length > longestLen) {
+        longestLen = l[i].length;
+      }
+    }
+    const cw = Math.max(width, Math.min(longestLen, MAX_RENDERED_LINE_LENGTH) * 7 + 24);
+    return { lines: l, contentWidth: cw };
+  }, [diff?.patch, width]);
 
   return (
     <Modal
@@ -203,9 +214,9 @@ export function FullScreenDiffViewer({
       </View>
     </Modal>
   );
-}
+});
 
-function FileRow({
+const FileRow = memo(function FileRow({
   diff,
   onOpenFullScreen,
 }: {
@@ -262,7 +273,7 @@ function FileRow({
       ) : null}
     </View>
   );
-}
+});
 
 export function ReviewPanel({
   server,

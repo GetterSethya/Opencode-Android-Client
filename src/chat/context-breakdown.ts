@@ -22,6 +22,32 @@ export function estimateTokens(chars: number): number {
   return Math.ceil(chars / 4);
 }
 
+function estimateInputChars(input: unknown): number {
+  if (!input) return 0;
+  if (typeof input === 'string') return input.length;
+  if (typeof input === 'object') {
+    const obj = input as Record<string, unknown>;
+    let total = 2; // for braces
+    for (const key in obj) {
+      total += key.length + 3; // "key":
+      const val = obj[key];
+      if (typeof val === 'string') {
+        total += val.length + 2;
+      } else if (typeof val === 'number' || typeof val === 'boolean') {
+        total += 8;
+      } else if (val && typeof val === 'object') {
+        try {
+          total += JSON.stringify(val).length;
+        } catch {
+          total += 20;
+        }
+      }
+    }
+    return total;
+  }
+  return 10;
+}
+
 function charsFromPart(part: UIMessage['parts'][number]): { assistant: number; tool: number } {
   if (part.type === 'text') {
     return { assistant: part.text.length, tool: 0 };
@@ -31,7 +57,7 @@ function charsFromPart(part: UIMessage['parts'][number]): { assistant: number; t
   }
   if (part.type.startsWith('tool-')) {
     const tool = part as Extract<UIMessage['parts'][number], { type: `tool-${string}` }>;
-    const input = tool.input ? JSON.stringify(tool.input).length : 0;
+    const input = estimateInputChars(tool.input);
     const output = typeof tool.output === 'string' ? tool.output.length : 0;
     return { assistant: 0, tool: input + output };
   }
@@ -67,38 +93,32 @@ export function estimateContextBreakdown(args: {
     return [];
   }
 
-  const counts = args.messages.reduce(
-    (acc, message) => {
-      if (message.role === 'user') {
-        const user = message.parts.reduce(
-          (sum, part) => sum + (part.type === 'text' ? part.text.length : 0),
-          0,
-        );
-        return { ...acc, user: acc.user + user };
+  let userChars = 0;
+  let assistantChars = 0;
+  let toolChars = 0;
+
+  for (let i = 0; i < args.messages.length; i++) {
+    const message = args.messages[i];
+    if (message.role === 'user') {
+      for (let j = 0; j < message.parts.length; j++) {
+        const part = message.parts[j];
+        if (part.type === 'text') {
+          userChars += part.text.length;
+        }
       }
-      const totals = message.parts.reduce(
-        (sum, part) => {
-          const next = charsFromPart(part);
-          return {
-            assistant: sum.assistant + next.assistant,
-            tool: sum.tool + next.tool,
-          };
-        },
-        { assistant: 0, tool: 0 },
-      );
-      return {
-        ...acc,
-        assistant: acc.assistant + totals.assistant,
-        tool: acc.tool + totals.tool,
-      };
-    },
-    { user: 0, assistant: 0, tool: 0 },
-  );
+    } else {
+      for (let j = 0; j < message.parts.length; j++) {
+        const next = charsFromPart(message.parts[j]);
+        assistantChars += next.assistant;
+        toolChars += next.tool;
+      }
+    }
+  }
 
   const tokens = {
-    user: estimateTokens(counts.user),
-    assistant: estimateTokens(counts.assistant),
-    tool: estimateTokens(counts.tool),
+    user: estimateTokens(userChars),
+    assistant: estimateTokens(assistantChars),
+    tool: estimateTokens(toolChars),
   };
   const estimated = tokens.user + tokens.assistant + tokens.tool;
 

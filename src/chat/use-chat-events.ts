@@ -65,39 +65,52 @@ export function useChatEventSubscription({
         return;
       }
 
-      let parsed: OpencodeEvent;
+      let parsed: unknown;
       try {
-        parsed = JSON.parse(raw) as OpencodeEvent;
+        parsed = JSON.parse(raw);
       } catch {
+        return;
+      }
+
+      const eventData = (
+        parsed && typeof parsed === 'object' && 'payload' in parsed && (parsed as { payload?: unknown }).payload
+          ? (parsed as { payload: OpencodeEvent }).payload
+          : parsed
+      ) as OpencodeEvent;
+      if (!eventData || !eventData.type) {
         return;
       }
 
       const sid = activeSessionIdRef.current;
 
-      if (parsed.type === 'session.idle') {
-        if ((parsed.properties as { sessionID?: string }).sessionID === sid) {
+      if (eventData.type === 'session.idle') {
+        if ((eventData.properties as { sessionID?: string }).sessionID === sid) {
           setStatus('ready');
         }
         return;
       }
 
-      if (parsed.type === 'session.status') {
-        const properties = parsed.properties as {
+      if (eventData.type === 'session.status') {
+        const properties = eventData.properties as {
           sessionID?: string;
           status?: { type?: string };
         };
-        if (properties.sessionID === sid && properties.status?.type === 'idle') {
-          setStatus('ready');
+        if (properties.sessionID === sid) {
+          if (properties.status?.type === 'idle') {
+            setStatus('ready');
+          } else if (properties.status?.type === 'busy' || properties.status?.type === 'running') {
+            setStatus((current) => (current === 'ready' || current === 'submitted' ? 'streaming' : current));
+          }
         }
         return;
       }
 
       if (
-        parsed.type === 'session.updated' ||
-        parsed.type === 'session.created' ||
-        parsed.type === 'session.forked'
+        eventData.type === 'session.updated' ||
+        eventData.type === 'session.created' ||
+        eventData.type === 'session.forked'
       ) {
-        const info = (parsed.properties as { info?: OpencodeSession }).info;
+        const info = (eventData.properties as { info?: OpencodeSession }).info;
         if (info?.id) {
           setSessions((prev) => {
             const others = prev.filter((session) => session.id !== info.id);
@@ -107,8 +120,8 @@ export function useChatEventSubscription({
         return;
       }
 
-      if (parsed.type === 'session.deleted') {
-        const deletedId = (parsed.properties as { sessionID?: string }).sessionID;
+      if (eventData.type === 'session.deleted') {
+        const deletedId = (eventData.properties as { sessionID?: string }).sessionID;
         if (deletedId) {
           setSessions((prev) => prev.filter((session) => session.id !== deletedId));
           if (activeSessionIdRef.current === deletedId) {
@@ -137,7 +150,7 @@ export function useChatEventSubscription({
       // Config reloads (adding/removing providers, models, credentials) and
       // server restarts invalidate the cached provider catalog. Without this
       // the app keeps showing the provider list it fetched at startup.
-      if (parsed.type === 'catalog.updated' || parsed.type === 'global.disposed') {
+      if (eventData.type === 'catalog.updated' || eventData.type === 'global.disposed') {
         void queryClient.invalidateQueries({ queryKey: ['providers-catalog'] });
         void queryClient.invalidateQueries({ queryKey: ['provider-auth-methods'] });
         void queryClient.invalidateQueries({ queryKey: ['global-config'] });
@@ -148,8 +161,8 @@ export function useChatEventSubscription({
       // The `question` tool pauses the run until the user answers. Track
       // pending requests so the tool renders tappable options; answering
       // posts to POST /question/:id/reply and the run resumes server-side.
-      if (parsed.type === 'question.asked') {
-        const properties = parsed.properties as {
+      if (eventData.type === 'question.asked') {
+        const properties = eventData.properties as {
           id: string;
           sessionID: string;
           questions: OpencodeQuestion[];
@@ -169,8 +182,8 @@ export function useChatEventSubscription({
         return;
       }
 
-      if (parsed.type === 'question.replied' || parsed.type === 'question.rejected') {
-        const requestID = (parsed.properties as { requestID?: string }).requestID;
+      if (eventData.type === 'question.replied' || eventData.type === 'question.rejected') {
+        const requestID = (eventData.properties as { requestID?: string }).requestID;
         if (!requestID) {
           return;
         }
@@ -188,8 +201,8 @@ export function useChatEventSubscription({
       // Tool permission requests pause the run until approved or rejected.
       // They carry the tool call they belong to, so the card renders under
       // the matching tool part (same pattern as question.asked).
-      if (parsed.type === 'permission.asked') {
-        const properties = parsed.properties as {
+      if (eventData.type === 'permission.asked') {
+        const properties = eventData.properties as {
           id: string;
           sessionID: string;
           permission: string;
@@ -210,8 +223,8 @@ export function useChatEventSubscription({
         return;
       }
 
-      if (parsed.type === 'permission.replied') {
-        const requestID = (parsed.properties as { requestID?: string }).requestID;
+      if (eventData.type === 'permission.replied') {
+        const requestID = (eventData.properties as { requestID?: string }).requestID;
         if (!requestID) {
           return;
         }
@@ -227,17 +240,17 @@ export function useChatEventSubscription({
       }
 
       if (
-        parsed.type === 'message.updated' ||
-        parsed.type === 'message.part.updated' ||
-        parsed.type === 'message.part.delta' ||
-        parsed.type === 'message.part.removed'
+        eventData.type === 'message.updated' ||
+        eventData.type === 'message.part.updated' ||
+        eventData.type === 'message.part.delta' ||
+        eventData.type === 'message.part.removed'
       ) {
         if (!sid) {
           return;
         }
-        setState((prev) => applyEvent(prev, parsed, sid));
-        if (parsed.type === 'message.part.updated' || parsed.type === 'message.part.delta') {
-          const props = parsed.properties as { sessionID?: string; part?: OpencodePart };
+        setState((prev) => applyEvent(prev, eventData, sid));
+        if (eventData.type === 'message.part.updated' || eventData.type === 'message.part.delta') {
+          const props = eventData.properties as { sessionID?: string; part?: OpencodePart };
           const eventSid = props.part?.sessionID ?? props.sessionID;
           if (eventSid === sid) {
             setStatus((current) => (current === 'ready' ? 'streaming' : current));

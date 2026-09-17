@@ -34,7 +34,7 @@ export function Tool({ className, children, defaultOpen }: ToolProps) {
   return (
     <Collapsible
       defaultOpen={defaultOpen}
-      className={cn('mb-4 w-full rounded-md border border-border', className)}
+      className={cn('mb-4 w-full rounded-xl border border-border bg-surface overflow-hidden', className)}
     >
       {children}
     </Collapsible>

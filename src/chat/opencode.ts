@@ -152,7 +152,7 @@ export class OpencodeClient {
   }
 
   eventUrl() {
-    return this.url('/event');
+    return this.url('/global/event');
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {

@@ -67,8 +67,6 @@ function partToUI(part: OpencodePart): UIMessagePart | null {
             : undefined,
       };
     }
-    case 'step-start':
-      return { type: 'step-start' };
     default:
       return null;
   }
@@ -177,7 +175,18 @@ export function applyEvent(state: MessageState, event: OpencodeEvent, sessionId:
           delete parts[key];
         }
       }
-      parts[part.id] = part;
+      const currentPart = parts[part.id];
+      if (
+        (part.type === 'text' || part.type === 'reasoning') &&
+        !part.text &&
+        currentPart &&
+        (currentPart.type === 'text' || currentPart.type === 'reasoning') &&
+        currentPart.text
+      ) {
+        parts[part.id] = { ...part, text: currentPart.text };
+      } else {
+        parts[part.id] = part;
+      }
       return { ...state, [part.messageID]: { ...existing, parts } };
     }
     case 'message.part.delta': {
@@ -200,18 +209,27 @@ export function applyEvent(state: MessageState, event: OpencodeEvent, sessionId:
         },
         parts: {},
       };
-      const existingPart = existing.parts[partID] ?? {
-        id: partID,
-        sessionID,
-        messageID,
-        type: 'text' as const,
-        text: '',
-      };
-      let updatedPart = existingPart;
-      if (existingPart.type === 'text' && field === 'text') {
-        updatedPart = { ...existingPart, text: (existingPart.text || '') + delta };
-      } else if (existingPart.type === 'reasoning' && (field === 'text' || field === 'reasoning')) {
-        updatedPart = { ...existingPart, text: (existingPart.text || '') + delta };
+      const existingPart = existing.parts[partID];
+      let updatedPart: OpencodePart;
+      if (existingPart && (existingPart.type === 'text' || existingPart.type === 'reasoning')) {
+        const text = (existingPart.text || '') + delta;
+        updatedPart = { ...existingPart, text };
+      } else if (field === 'reasoning') {
+        updatedPart = {
+          id: partID,
+          sessionID,
+          messageID,
+          type: 'reasoning',
+          text: delta,
+        };
+      } else {
+        updatedPart = {
+          id: partID,
+          sessionID,
+          messageID,
+          type: 'text',
+          text: delta,
+        };
       }
       const parts = { ...existing.parts, [partID]: updatedPart };
       return { ...state, [messageID]: { ...existing, parts } };
@@ -282,7 +300,8 @@ export function deriveMessages(state: MessageState): UIMessage[] {
       };
       messageCache.set(record, derived);
       return derived;
-    });
+    })
+    .filter((message) => message.parts.length > 0 || message.error !== undefined);
 }
 
 export function sortSessions(sessions: OpencodeSession[]) {

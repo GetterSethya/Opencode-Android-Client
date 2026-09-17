@@ -5,7 +5,7 @@ import {
   GitForkIcon,
   Trash2Icon,
 } from 'lucide-react-native';
-import { memo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { Clipboard, Image, Text, View } from 'react-native';
 
 import type { PermissionReply } from '@/chat/opencode';
@@ -94,10 +94,18 @@ export const MessageItem = memo(function MessageItem({
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const messageText = message.parts
-    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n\n');
+  if (message.parts.length === 0 && !message.error) {
+    return null;
+  }
+
+  const messageText = useMemo(
+    () =>
+      message.parts
+        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n\n'),
+    [message.parts],
+  );
 
   const copyResponse = () => {
     Clipboard.setString(messageText);
@@ -123,17 +131,38 @@ export const MessageItem = memo(function MessageItem({
     </MessageAction>
   );
 
+  const pendingPermissionByCallId = useMemo(() => {
+    if (pendingPermissions.length === 0) return null;
+    const map = new Map<string, PendingPermission>();
+    for (const p of pendingPermissions) {
+      if (p.callID) map.set(p.callID, p);
+    }
+    return map;
+  }, [pendingPermissions]);
+
+  const pendingQuestionByCallId = useMemo(() => {
+    if (pendingQuestions.length === 0) return null;
+    const map = new Map<string, PendingQuestion>();
+    for (const q of pendingQuestions) {
+      if (q.callID) map.set(q.callID, q);
+    }
+    return map;
+  }, [pendingQuestions]);
+
   return (
     <Message from={message.role}>
       <MessageContent
         className={
           isUser
-            ? 'bg-surface-secondary'
-            : 'w-full bg-transparent px-0 py-0'
+            ? 'rounded-2xl bg-surface-secondary px-4 py-3'
+            : 'w-full px-0 py-0'
         }
       >
         {message.parts.map((part, index) => {
           if (part.type === 'text') {
+            if (!part.text) {
+              return null;
+            }
             return isUser ? (
               <MessageText key={index}>{part.text}</MessageText>
             ) : (
@@ -179,9 +208,9 @@ export const MessageItem = memo(function MessageItem({
             >;
             // A paused run's permission request names the tool call it waits
             // on; the approval card renders under that tool part.
-            const pendingPermission = pendingPermissions.find(
-              (entry) => entry.callID && entry.callID === toolPart.toolCallId,
-            );
+            const pendingPermission = toolPart.toolCallId && pendingPermissionByCallId
+              ? pendingPermissionByCallId.get(toolPart.toolCallId)
+              : pendingPermissions.find((entry) => entry.callID && entry.callID === toolPart.toolCallId);
             const permissionCard = pendingPermission ? (
               <PermissionCard
                 permission={pendingPermission}
@@ -197,9 +226,9 @@ export const MessageItem = memo(function MessageItem({
             // matching question request is pending the options are tappable
             // and the reply resumes the paused run.
             if (toolPart.toolName === 'question') {
-              const pending = pendingQuestions.find(
-                (entry) => entry.callID === toolPart.toolCallId,
-              );
+              const pending = toolPart.toolCallId && pendingQuestionByCallId
+                ? pendingQuestionByCallId.get(toolPart.toolCallId)
+                : pendingQuestions.find((entry) => entry.callID === toolPart.toolCallId);
               const parsedQuestions = parseQuestionInput(toolPart.input);
               // The event's questions are authoritative; prefer them when the
               // streamed part input is empty or still partial.

@@ -14,10 +14,6 @@ export type ReasoningUIPart = {
   text: string;
 };
 
-export type StepStartUIPart = {
-  type: 'step-start';
-};
-
 export type ToolUIPart = {
   type: `tool-${string}`;
   toolCallId: string;
@@ -60,7 +56,6 @@ export type FileUIPart = {
 export type UIMessagePart =
   | TextUIPart
   | ReasoningUIPart
-  | StepStartUIPart
   | ToolUIPart
   | DynamicToolUIPart
   | SourceUrlUIPart

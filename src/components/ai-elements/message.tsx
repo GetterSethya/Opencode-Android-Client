@@ -35,7 +35,7 @@ export type MessageContentProps = {
 
 export function MessageContent({ className, children }: MessageContentProps) {
   return (
-    <View className={cn('min-w-0 max-w-full gap-2 overflow-hidden rounded-2xl px-4 py-3', className)}>
+    <View className={cn('min-w-0 max-w-full gap-2', className)}>
       {children}
     </View>
   );

@@ -43,7 +43,8 @@
     "android": "expo run:android",
     "prebuild": "expo prebuild --platform android",
     "build:apk": "expo prebuild --platform android && cd android && ./gradlew assembleDebug",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "benchmark": "npx tsx -r ./scripts/benchmark/setup.cjs ./scripts/benchmark/runner.tsx"
   },
   "private": true
 }
