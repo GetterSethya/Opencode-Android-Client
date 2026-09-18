@@ -6,7 +6,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -113,26 +113,31 @@ function Transcript({ text, placeholder }: { text: string; placeholder: string }
         nativeEvent.contentSize.height -
         nativeEvent.layoutMeasurement.height -
         nativeEvent.contentOffset.y;
-      stickRef.current = distance < 48;
+      stickRef.current = distance < 64;
     },
     [],
   );
 
-  const handleContentSizeChange = useCallback(() => {
+  const scrollToBottom = useCallback(() => {
     if (stickRef.current) {
       scrollRef.current?.scrollToEnd({ animated: false });
     }
   }, []);
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [text, scrollToBottom]);
+
   return (
     <ScrollView
       ref={scrollRef}
-      className="flex-1 px-3 py-2"
+      className="flex-1"
+      contentContainerClassName="px-3 pt-2 pb-8"
       onScroll={handleScroll}
-      onContentSizeChange={handleContentSizeChange}
+      onContentSizeChange={scrollToBottom}
       scrollEventThrottle={100}
     >
-      <Text selectable className="font-mono text-[13px] leading-[19px] text-foreground">
+      <Text selectable className="font-mono text-[13px] leading-[20px] text-foreground">
         {text || placeholder}
       </Text>
     </ScrollView>

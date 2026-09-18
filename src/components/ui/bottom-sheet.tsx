@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect } from 'react';
+import { type ReactNode, memo, useCallback, useEffect, useRef } from 'react';
 import {
   BackHandler,
   Pressable,
@@ -26,6 +26,23 @@ export interface BottomSheetProps {
   interactionName?: string;
   animated?: boolean;
 }
+
+/**
+ * Guards closed sheets from re-rendering on ambient context changes (such as theme toggling).
+ * When visible transitions from false -> true, it immediately evaluates fresh.
+ */
+const SheetContent = memo(
+  function SheetContent({ children, visible: _visible }: { children: ReactNode; visible: boolean }) {
+    return <>{children}</>;
+  },
+  (prev, next) => {
+    // If the sheet was closed and stays closed, skip re-evaluating the subtree
+    if (!prev.visible && !next.visible) {
+      return true;
+    }
+    return false;
+  },
+);
 
 /**
  * Drawer-style bottom sheet: content stays pre-mounted (like
@@ -133,7 +150,7 @@ export function BottomSheet({
           className={cn('rounded-t-3xl bg-surface pt-4', className)}
           onLayout={handleSheetLayout}
         >
-          {children}
+          <SheetContent visible={visible}>{children}</SheetContent>
         </Animated.View>
       </View>
     </View>

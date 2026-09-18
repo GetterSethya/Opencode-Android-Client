@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { Appearance, useColorScheme } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { Uniwind } from 'uniwind';
 
 import { ThemeSchemeContext } from '@/hooks/use-theme-colors';
@@ -160,11 +160,16 @@ export function ChatSettingsProvider({ children }: { children: ReactNode }) {
     void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }, []);
 
+  const applyNativeTheme = useCallback((theme: ThemePreference) => {
+    Uniwind.setTheme(theme);
+  }, []);
+
   const setTheme = useCallback(
     (theme: ThemePreference) => {
+      applyNativeTheme(theme);
       persist({ ...settings, theme });
     },
-    [persist, settings],
+    [applyNativeTheme, persist, settings],
   );
 
   const addServer = useCallback(
@@ -228,10 +233,9 @@ export function ChatSettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (ready) {
-      Uniwind.setTheme(settings.theme);
-      Appearance.setColorScheme(settings.theme === 'system' ? 'unspecified' : settings.theme);
+      applyNativeTheme(settings.theme);
     }
-  }, [ready, settings.theme]);
+  }, [ready, settings.theme, applyNativeTheme]);
 
   const activeServer = useMemo(
     () =>

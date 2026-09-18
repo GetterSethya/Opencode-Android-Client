@@ -21,6 +21,7 @@ import { useProviderCatalog } from '@/chat/use-opencode-provider-management';
 import {
   Conversation,
   type ConversationProps,
+  Loader,
   PromptInput,
   PromptInputFooter,
   Suggestion,
@@ -53,9 +54,6 @@ import { SystemBars } from '@/components/system-bars';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { markInteractionStart } from '@/lib/interaction-perf';
 
-
-
-
 const STARTER_SUGGESTIONS = [
   'What can you do?',
   'Explain this project',
@@ -63,11 +61,18 @@ const STARTER_SUGGESTIONS = [
 ];
 
 // Prevents the heavy message list (Markdown + syntax highlighting) from
-// re-rendering when overlay state like menuOpen toggles. Mirrors why the
-// native drawer feels instant: opening it issues zero list reconciliation.
-const MemoConversation = memo(function MemoConversation(props: ConversationProps) {
-  return <Conversation {...props} />;
-});
+// re-rendering when overlay state like menuOpen toggles or ambient theme context updates.
+const MemoConversation = memo(
+  function MemoConversation(props: ConversationProps) {
+    return <Conversation {...props} />;
+  },
+  (prev, next) =>
+    prev.messages === next.messages &&
+    prev.isLoadingOlder === next.isLoadingOlder &&
+    prev.hasMoreOlder === next.hasMoreOlder &&
+    prev.ListHeaderComponent === next.ListHeaderComponent &&
+    prev.className === next.className,
+);
 
 export function ChatScreen() {
   const {
@@ -106,6 +111,7 @@ export function ChatScreen() {
     shareSession,
     unshareSession,
     summarizeSession,
+    closeProject,
     messageQueue,
     queueMessage,
     removeQueuedMessage,
@@ -114,6 +120,7 @@ export function ChatScreen() {
   const { activeServer } = useChatSettings();
   const { confirm, notify } = useDialog();
   const colors = useThemeColors();
+  const isDark = colors.dark;
 
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -226,6 +233,19 @@ export function ChatScreen() {
       void forkSession();
     }
   }, [confirm, forkSession]);
+
+  const handleCloseProject = useCallback(async () => {
+    closeMenu();
+    const confirmed = await confirm({
+      title: 'Close project',
+      message: 'This will close the current project folder and clear the active workspace.',
+      confirmLabel: 'Close project',
+      destructive: true,
+    });
+    if (confirmed) {
+      void closeProject();
+    }
+  }, [closeMenu, confirm, closeProject]);
 
   const handleAnswerQuestion = useCallback(
     (requestID: string, answers: string[][]) => answerQuestion(requestID, answers),
@@ -382,6 +402,21 @@ export function ChatScreen() {
   };
 
   const lastMessage = messages.at(-1);
+  const isWaitingForResponse =
+    (status === 'submitted' || status === 'streaming') &&
+    lastMessage?.role === 'user';
+
+  const conversationHeader = useMemo(() => {
+    if (!isWaitingForResponse) {
+      return null;
+    }
+    return (
+      <View className="py-2">
+        <Loader label="Thinking..." />
+      </View>
+    );
+  }, [isWaitingForResponse]);
+
   const lastError =
     lastMessage?.role === 'assistant' && lastMessage.error ? lastMessage.error : undefined;
   const statusText = isForking
@@ -411,16 +446,10 @@ export function ChatScreen() {
 
   const handleCloseMenu = useCallback(() => closeMenu(), [closeMenu]);
   const handleCloseModel = useCallback(() => setModelOpen(false), []);
-  const handleManageProviders = useCallback(() => {
-    setModelOpen(false);
-    setProvidersOpen(true);
-  }, []);
+  const handleManageProviders = useCallback(() => { setModelOpen(false); setProvidersOpen(true); }, []);
   const handleCloseProviders = useCallback(() => setProvidersOpen(false), []);
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
-  const handleOpenProvidersFromSettings = useCallback(() => {
-    setSettingsOpen(false);
-    setProvidersOpen(true);
-  }, []);
+  const handleOpenProvidersFromSettings = useCallback(() => { setSettingsOpen(false); setProvidersOpen(true); }, []);
   const handleCloseQuickOpen = useCallback(() => setQuickOpen(false), []);
   const handleCloseShell = useCallback(() => setShellOpen(false), []);
   const handleCloseTerminal = useCallback(() => setTerminalOpen(false), []);
@@ -434,10 +463,7 @@ export function ChatScreen() {
   );
   const handleCloseChildren = useCallback(() => setChildrenOpen(false), []);
   const handleClosePanel = useCallback(() => setPanel(null), [setPanel]);
-  const handleBackPanel = useCallback(() => {
-    setPanel(null);
-    openMenu();
-  }, [setPanel, openMenu]);
+  const handleBackPanel = useCallback(() => { setPanel(null); openMenu(); }, [setPanel, openMenu]);
   const handleCloseFullScreenFile = useCallback(() => setFullScreenFile(null), [setFullScreenFile]);
   const handleCloseFullScreenDiff = useCallback(() => setFullScreenDiff(null), [setFullScreenDiff]);
 
@@ -479,6 +505,7 @@ export function ChatScreen() {
         onDeleteSession={deleteSession}
         onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onCloseProject={() => void closeProject()}
         onOpen={() => {
           void refreshSessions();
         }}
@@ -529,6 +556,7 @@ export function ChatScreen() {
                 onStartReached={hasMoreOlder ? loadOlderMessages : undefined}
                 isLoadingOlder={isLoadingOlder}
                 hasMoreOlder={hasMoreOlder}
+                ListHeaderComponent={conversationHeader}
               />
             )}
 
@@ -633,43 +661,58 @@ export function ChatScreen() {
         </SafeAreaView>
       </SessionsDrawer>
 
-      <NewSessionSheet
-        visible={newSessionOpen}
-        onClose={handleCloseNewSession}
-        server={activeServer}
-        currentDirectory={activeServer.directory}
-        busy={isLoading}
-        onCreate={handleCreateSession}
-      />
-      <ModelPicker
-        visible={modelOpen}
-        onClose={handleCloseModel}
-        onManageProviders={handleManageProviders}
-      />
-      <SettingsForm
-        visible={settingsOpen}
-        onClose={handleCloseSettings}
-        onOpenProviders={handleOpenProvidersFromSettings}
-      />
-      <ProvidersSheet visible={providersOpen} onClose={handleCloseProviders} />
-      <QuickOpenSheet
-        visible={quickOpen}
-        onClose={handleCloseQuickOpen}
-        server={activeServer}
-        onInsertMention={(path) => insertText(`@${path} `)}
-      />
-      <ShellSheet
-        visible={shellOpen}
-        onClose={handleCloseShell}
-        directoryLabel={activeServer.directory || 'server default folder'}
-        isBusy={isBusy}
-        onRun={handleRunShell}
-      />
-      <TerminalScreen
-        visible={terminalOpen}
-        server={activeServer}
-        onClose={handleCloseTerminal}
-      />
+      {newSessionOpen ? (
+        <NewSessionSheet
+          visible={newSessionOpen}
+          onClose={handleCloseNewSession}
+          server={activeServer}
+          currentDirectory={activeServer.directory}
+          busy={isLoading}
+          onCreate={handleCreateSession}
+          onCloseProject={() => void closeProject()}
+        />
+      ) : null}
+      {modelOpen ? (
+        <ModelPicker
+          visible={modelOpen}
+          onClose={handleCloseModel}
+          onManageProviders={handleManageProviders}
+        />
+      ) : null}
+      {settingsOpen ? (
+        <SettingsForm
+          visible={settingsOpen}
+          onClose={handleCloseSettings}
+          onOpenProviders={handleOpenProvidersFromSettings}
+        />
+      ) : null}
+      {providersOpen ? (
+        <ProvidersSheet visible={providersOpen} onClose={handleCloseProviders} />
+      ) : null}
+      {quickOpen ? (
+        <QuickOpenSheet
+          visible={quickOpen}
+          onClose={handleCloseQuickOpen}
+          server={activeServer}
+          onInsertMention={(path) => insertText(`@${path} `)}
+        />
+      ) : null}
+      {shellOpen ? (
+        <ShellSheet
+          visible={shellOpen}
+          onClose={handleCloseShell}
+          directoryLabel={activeServer.directory || 'server default folder'}
+          isBusy={isBusy}
+          onRun={handleRunShell}
+        />
+      ) : null}
+      {terminalOpen ? (
+        <TerminalScreen
+          visible={terminalOpen}
+          server={activeServer}
+          onClose={handleCloseTerminal}
+        />
+      ) : null}
       <SessionMenuSheet
         ref={menuRef}
         onClose={handleCloseMenu}
@@ -690,32 +733,42 @@ export function ChatScreen() {
         onOpenChildren={handleOpenChildren}
         childCount={sessionChildren.data?.length}
         onOpenParent={activeSession?.parentID ? handleOpenParent : undefined}
+        projectDirectory={activeServer.directory}
+        onCloseProject={handleCloseProject}
       />
-      <ChildSessionsSheet
-        visible={childrenOpen}
-        onClose={handleCloseChildren}
-        children={sessionChildren.data ?? []}
-        isLoading={sessionChildren.isLoading}
-        onSelect={(sessionId) => void selectSession(sessionId)}
-      />
-      <SessionPanelSheet
-        panel={panel}
-        onClose={handleClosePanel}
-        onBack={handleBackPanel}
-        session={activeSession ?? null}
-        messages={messages}
-        contextLimit={contextLimit}
-        modelLabel={modelLabel}
-        fileState={fileState}
-        onOpenFullScreen={(path) => setFullScreenFile(path)}
-        onOpenDiffFullScreen={(diff) => setFullScreenDiff(diff)}
-      />
-      <FullScreenFileViewer
-        server={activeServer}
-        path={fullScreenFile}
-        onClose={handleCloseFullScreenFile}
-      />
-      <FullScreenDiffViewer diff={fullScreenDiff} onClose={handleCloseFullScreenDiff} />
+      {childrenOpen ? (
+        <ChildSessionsSheet
+          visible={childrenOpen}
+          onClose={handleCloseChildren}
+          children={sessionChildren.data ?? []}
+          isLoading={sessionChildren.isLoading}
+          onSelect={(sessionId) => void selectSession(sessionId)}
+        />
+      ) : null}
+      {panel ? (
+        <SessionPanelSheet
+          panel={panel}
+          onClose={handleClosePanel}
+          onBack={handleBackPanel}
+          session={activeSession ?? null}
+          messages={messages}
+          contextLimit={contextLimit}
+          modelLabel={modelLabel}
+          fileState={fileState}
+          onOpenFullScreen={(path) => setFullScreenFile(path)}
+          onOpenDiffFullScreen={(diff) => setFullScreenDiff(diff)}
+        />
+      ) : null}
+      {fullScreenFile ? (
+        <FullScreenFileViewer
+          server={activeServer}
+          path={fullScreenFile}
+          onClose={handleCloseFullScreenFile}
+        />
+      ) : null}
+      {fullScreenDiff ? (
+        <FullScreenDiffViewer diff={fullScreenDiff} onClose={handleCloseFullScreenDiff} />
+      ) : null}
       <SystemBars />
     </>
   );

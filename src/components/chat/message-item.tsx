@@ -17,6 +17,7 @@ import type {
 import {
   BashTool,
   EditTool,
+  Loader,
   Message,
   MessageAction,
   MessageActions,
@@ -153,6 +154,15 @@ export const MessageItem = memo(function MessageItem({
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (message.parts.length === 0 && !message.error) {
+    if (isStreaming && !isUser) {
+      return (
+        <Message from="assistant">
+          <MessageContent className="w-full px-0 py-1">
+            <Loader label="Thinking..." />
+          </MessageContent>
+        </Message>
+      );
+    }
     return null;
   }
 

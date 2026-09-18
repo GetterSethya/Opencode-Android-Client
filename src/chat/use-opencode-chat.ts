@@ -239,6 +239,7 @@ export function useOpencodeChat() {
     shareSession,
     unshareSession,
     summarizeSession,
+    closeProject,
   } = useSessionActions({
     client,
     activeServer,
@@ -262,6 +263,10 @@ export function useOpencodeChat() {
     setHasMoreOlder,
     setIsLoadingOlder,
     setForkTarget,
+    setPendingQuestionMap,
+    setPendingPermissionMap,
+    messageQueueRef,
+    setMessageQueue,
   });
 
   const sendMessage = useCallback(
@@ -607,6 +612,7 @@ export function useOpencodeChat() {
     shareSession,
     unshareSession,
     summarizeSession,
+    closeProject,
     messageQueue,
     queueMessage,
     removeQueuedMessage,

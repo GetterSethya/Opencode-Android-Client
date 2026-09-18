@@ -127,14 +127,15 @@ export function Conversation({
           inverted
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          windowSize={7}
-          maxToRenderPerBatch={5}
+          windowSize={4}
+          initialNumToRender={5}
+          maxToRenderPerBatch={4}
           removeClippedSubviews
           contentContainerStyle={{ gap: 24, padding: 16 }}
           style={{ flex: 1 }}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.3}
-          ListHeaderComponent={ListFooterComponent}
+          ListHeaderComponent={ListHeaderComponent ?? ListFooterComponent}
           ListFooterComponent={
             isLoadingOlder ? (
               <View className="flex-row items-center justify-center gap-2 py-4">

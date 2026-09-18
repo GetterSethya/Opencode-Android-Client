@@ -21,6 +21,32 @@ export const mutedTextClass = (_dark: boolean) => 'text-muted';
 export const borderClass = (_dark: boolean) => 'border-border';
 export const inputClass = (_dark: boolean) => 'bg-surface-secondary';
 
+export const DARK_THEME_COLORS: ThemeColors = Object.freeze({
+  dark: true,
+  background: '#09090b',
+  surface: '#18181b',
+  foreground: '#fafafa',
+  muted: '#a1a1aa',
+  border: '#27272a',
+  input: '#27272a',
+  primary: '#fafafa',
+  danger: '#f87171',
+  success: '#4ade80',
+});
+
+export const LIGHT_THEME_COLORS: ThemeColors = Object.freeze({
+  dark: false,
+  background: '#ffffff',
+  surface: '#ffffff',
+  foreground: '#18181b',
+  muted: '#71717a',
+  border: '#e4e4e7',
+  input: '#f4f4f5',
+  primary: '#18181b',
+  danger: '#dc2626',
+  success: '#16a34a',
+});
+
 /**
  * Provides the app-level resolved dark mode. Using context (rather than
  * useColorScheme in every component) keeps theming consistent inside RN Modals
@@ -43,19 +69,7 @@ export function ThemeSchemeProvider({
 
 export function useThemeColors(): ThemeColors {
   const context = useContext(ThemeSchemeContext);
-  const fallbackDark = useColorScheme() === 'dark';
-  const dark = context ?? fallbackDark;
-
-  return {
-    dark,
-    background: dark ? '#09090b' : '#ffffff',
-    surface: dark ? '#18181b' : '#ffffff',
-    foreground: dark ? '#fafafa' : '#18181b',
-    muted: dark ? '#a1a1aa' : '#71717a',
-    border: dark ? '#27272a' : '#e4e4e7',
-    input: dark ? '#27272a' : '#f4f4f5',
-    primary: dark ? '#fafafa' : '#18181b',
-    danger: dark ? '#f87171' : '#dc2626',
-    success: dark ? '#4ade80' : '#16a34a',
-  };
+  // Default to dark when outside provider without attaching per-component native Appearance listeners
+  const dark = context ?? true;
+  return dark ? DARK_THEME_COLORS : LIGHT_THEME_COLORS;
 }

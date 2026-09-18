@@ -55,15 +55,6 @@ export function usePtyTerminal({
   const client = useMemo(() => createClientFromServer(server), [server]);
   const queryClient = useQueryClient();
 
-  const listQuery = useQuery({
-    queryKey: ptyKey(server),
-    queryFn: () => client.listPtys(),
-    enabled,
-    staleTime: 10 * 1000,
-    retry: 1,
-  });
-  const running = useMemo(() => listQuery.data ?? [], [listQuery.data]);
-
   const [requestedActiveId, setRequestedActiveId] = useState<string | null>(null);
   const [exited, setExited] = useState<{ id: string; title: string }[]>([]);
   const [buffers, setBuffers] = useState<Record<string, PtyBuffer>>({});
@@ -84,6 +75,18 @@ export function usePtyTerminal({
   const generationRef = useRef(0);
   const flushScheduledRef = useRef(false);
   const pendingRef = useRef<Record<string, { text: string; cursorDelta: number }>>({});
+
+  const listQuery = useQuery({
+    queryKey: ptyKey(server),
+    queryFn: () => client.listPtys(),
+    enabled,
+    staleTime: 0,
+    retry: 1,
+  });
+  const running = useMemo(
+    () => (listQuery.data ?? []).filter((info) => !removedRef.current.has(info.id)),
+    [listQuery.data],
+  );
 
   for (const info of running) {
     titlesRef.current[info.id] = info.title;
@@ -363,37 +366,48 @@ export function usePtyTerminal({
     setBusy(true);
     try {
       const info = await client.createPty({});
+      removedRef.current.delete(info.id);
       freshRef.current.add(info.id);
+      confirmedRef.current.add(info.id);
       titlesRef.current[info.id] = info.title;
-      await queryClient.invalidateQueries({ queryKey: ptyKey(server) });
+      queryClient.setQueryData<PtyInfo[]>(ptyKey(server), (prev) => [
+        ...(prev?.filter((p) => p.id !== info.id) ?? []),
+        info,
+      ]);
       setRequestedActiveId(info.id);
       setLiveStatus('connecting');
+      void listQuery.refetch();
       return info.id;
     } finally {
       setBusy(false);
     }
-  }, [client, queryClient, server]);
+  }, [client, listQuery, queryClient, server]);
 
   const removeTab = useCallback(
     async (id: string) => {
       removedRef.current.add(id);
       freshRef.current.delete(id);
+      confirmedRef.current.delete(id);
       sizedRef.current.delete(id);
-      if (socketRef.current && activeRunning?.id === id) {
-        try {
-          socketRef.current.close(1000);
-        } catch {
-          // Already gone.
+
+      const wasActive = activeId === id;
+      if (wasActive) {
+        generationRef.current += 1;
+        if (socketRef.current) {
+          try {
+            socketRef.current.close(1000);
+          } catch {
+            // Already gone.
+          }
+          socketRef.current = null;
         }
-        socketRef.current = null;
+        setLiveStatus('connecting');
+        setLiveError(undefined);
       }
-      if (!exitedIds.has(id)) {
-        try {
-          await client.removePty(id);
-        } catch {
-          // Already gone server-side (exited sessions vanish on their own).
-        }
-      }
+
+      queryClient.setQueryData<PtyInfo[]>(ptyKey(server), (prev) =>
+        prev ? prev.filter((info) => info.id !== id) : [],
+      );
       setExited((prev) => prev.filter((tab) => tab.id !== id));
       setBuffers((prev) => {
         if (!(id in prev)) {
@@ -404,9 +418,16 @@ export function usePtyTerminal({
         return next;
       });
       setRequestedActiveId((prev) => (prev === id ? null : prev));
-      await queryClient.invalidateQueries({ queryKey: ptyKey(server) });
+
+      try {
+        await client.removePty(id);
+      } catch {
+        // Already gone server-side (exited sessions vanish on their own).
+      }
+
+      void listQuery.refetch();
     },
-    [activeRunning, client, exited, exitedIds, queryClient, running, server],
+    [activeId, client, listQuery, queryClient, server],
   );
 
   const refresh = useCallback(() => {
@@ -425,6 +446,9 @@ export function usePtyTerminal({
     const live = new Map(running.map((info) => [info.id, info]));
     const ordered: PtyTab[] = [];
     for (const info of running) {
+      if (removedRef.current.has(info.id)) {
+        continue;
+      }
       ordered.push({
         id: info.id,
         title: info.title,
@@ -434,7 +458,7 @@ export function usePtyTerminal({
       });
     }
     for (const tab of exited) {
-      if (!live.has(tab.id)) {
+      if (!live.has(tab.id) && !removedRef.current.has(tab.id)) {
         ordered.push({ ...tab, exited: true, status: 'exited' });
       }
     }

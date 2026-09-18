@@ -77,6 +77,7 @@ export type SessionsDrawerProps = {
   onRenameSession: (sessionId: string, title: string) => void;
   onOpenSettings: () => void;
   onOpen?: () => void;
+  onCloseProject?: () => void;
   children: ReactNode;
 };
 
@@ -93,6 +94,7 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
       onRenameSession,
       onOpenSettings,
       onOpen,
+      onCloseProject,
       children,
     },
     ref,
@@ -158,6 +160,22 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
       [confirm, onDeleteSession],
     );
 
+    const confirmCloseProject = useCallback(async () => {
+      if (!onCloseProject) {
+        return;
+      }
+      const confirmed = await confirm({
+        title: 'Close project',
+        message: 'This will close the current project folder and clear the active workspace.',
+        confirmLabel: 'Close project',
+        destructive: true,
+      });
+      if (confirmed) {
+        close();
+        onCloseProject();
+      }
+    }, [close, confirm, onCloseProject]);
+
     const openSessionActions = useCallback(
       (session: OpencodeSession) => {
         void choose({
@@ -205,6 +223,17 @@ export const SessionsDrawer = forwardRef<SessionsDrawerHandle, SessionsDrawerPro
                   {projectDirectory || 'Server default'}
                 </Text>
               </View>
+              {projectDirectory && onCloseProject ? (
+                <Pressable
+                  accessibilityLabel="Close project"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  className="rounded-lg p-1 active:bg-surface"
+                  onPress={() => void confirmCloseProject()}
+                >
+                  <XIcon size={16} color={colors.muted} />
+                </Pressable>
+              ) : null}
             </View>
             <Pressable
               className="flex-row items-center justify-center gap-2 rounded-xl bg-foreground py-3"

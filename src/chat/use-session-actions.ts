@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 
 import {
@@ -6,6 +7,9 @@ import {
   MESSAGE_PAGE_SIZE,
   sortSessions,
   type MessageState,
+  type PendingPermission,
+  type PendingQuestion,
+  type QueuedMessage,
 } from './chat-state';
 import {
   isSessionNotFoundError,
@@ -41,6 +45,10 @@ export type SessionActionsOptions = {
   setHasMoreOlder: Dispatch<SetStateAction<boolean>>;
   setIsLoadingOlder: Dispatch<SetStateAction<boolean>>;
   setForkTarget: Dispatch<SetStateAction<string | null>>;
+  setPendingQuestionMap?: Dispatch<SetStateAction<Record<string, PendingQuestion>>>;
+  setPendingPermissionMap?: Dispatch<SetStateAction<Record<string, PendingPermission>>>;
+  messageQueueRef?: { current: QueuedMessage[] };
+  setMessageQueue?: Dispatch<SetStateAction<QueuedMessage[]>>;
 };
 
 /**
@@ -72,7 +80,12 @@ export function useSessionActions({
   setHasMoreOlder,
   setIsLoadingOlder,
   setForkTarget,
+  setPendingQuestionMap,
+  setPendingPermissionMap,
+  messageQueueRef,
+  setMessageQueue,
 }: SessionActionsOptions) {
+  const queryClient = useQueryClient();
   /**
    * Pulls the next (older) page in. Guarded so a fling to the top cannot fire
    * overlapping requests, and paused while a response is streaming (the list
@@ -402,7 +415,79 @@ export function useSessionActions({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
-  }, [client, activeServer.model]);
+  }, [client, activeServer.model, activeSessionIdRef, setError]);
+
+  /**
+   * Closes the active project folder: aborts any running prompt, disposes
+   * the server instance, clears project caches and in-flight chat state, and
+   * resets the directory back to the server default (or re-bootstraps if
+   * already default).
+   */
+  const closeProject = useCallback(async (directory?: string) => {
+    const targetDir = directory ?? activeServer.directory;
+    const sid = activeSessionIdRef.current;
+    if (sid && (status === 'submitted' || status === 'streaming')) {
+      try {
+        await client.abort(sid);
+      } catch {
+        // Best effort
+      }
+    }
+    if (targetDir) {
+      try {
+        await client.disposeInstance(targetDir);
+      } catch {
+        // Best effort
+      }
+    }
+    setState({});
+    setActiveSessionId(null);
+    activeSessionIdRef.current = null;
+    setPendingQuestionMap?.({});
+    setPendingPermissionMap?.({});
+    if (messageQueueRef) {
+      messageQueueRef.current = [];
+    }
+    setMessageQueue?.([]);
+    setSessions([]);
+    setError(null);
+    setLoadError(null);
+    setStatus('ready');
+
+    queryClient.removeQueries({ queryKey: ['files'] });
+    queryClient.removeQueries({ queryKey: ['vcs-status'] });
+    queryClient.removeQueries({ queryKey: ['vcs-diff'] });
+    queryClient.removeQueries({ queryKey: ['file-search'] });
+    queryClient.removeQueries({ queryKey: ['commands'] });
+    queryClient.removeQueries({ queryKey: ['session-children'] });
+    queryClient.removeQueries({ queryKey: ['pty'] });
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+
+    if (activeServer.directory) {
+      updateServer(activeServer.id, { directory: '' });
+    } else {
+      await bootstrap({ cancelled: false });
+    }
+  }, [
+    activeServer.directory,
+    activeServer.id,
+    bootstrap,
+    client,
+    queryClient,
+    setActiveSessionId,
+    setError,
+    setLoadError,
+    setMessageQueue,
+    setPendingPermissionMap,
+    setPendingQuestionMap,
+    setSessions,
+    setState,
+    setStatus,
+    status,
+    updateServer,
+    activeSessionIdRef,
+    messageQueueRef,
+  ]);
 
   return {
     loadOlderMessages,
@@ -419,5 +504,6 @@ export function useSessionActions({
     shareSession,
     unshareSession,
     summarizeSession,
+    closeProject,
   };
 }

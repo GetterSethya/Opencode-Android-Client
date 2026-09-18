@@ -188,6 +188,15 @@ export class OpencodeClient {
     return this.request<OpencodeProject[]>('/project');
   }
 
+  /**
+   * Clean up and dispose an OpenCode instance on the server, releasing all
+   * resources (file watchers, LSP instances, background processes).
+   */
+  disposeInstance(directory?: string) {
+    const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+    return this.request<boolean>(`/instance/dispose${query}`, { method: 'POST' });
+  }
+
   createSession(title?: string) {
     return this.request<OpencodeSession>('/session', {
       method: 'POST',

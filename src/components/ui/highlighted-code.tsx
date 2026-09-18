@@ -126,6 +126,7 @@ function resolveTokenStyle(
 // Bounded LRU cache for tokenized lines: max 250 items
 const MAX_TOKEN_CACHE_SIZE = 250;
 const tokenizedLinesCache = new Map<string, HighlightedToken[][]>();
+const tokenAstCache = new Map<string, Array<Array<{ types: string[]; content: string; empty?: boolean }>>>();
 
 export function getHighlightedTokens(
   code: string,
@@ -142,38 +143,48 @@ export function getHighlightedTokens(
     return existing;
   }
 
-  const grammar = (Prism.languages as Record<string, any>)[language] ?? Prism.languages.javascript;
-  let lines: HighlightedToken[][];
+  const astKey = `${language}:${code}`;
+  let normalized = tokenAstCache.get(astKey);
 
-  if (!grammar) {
-    const rawLines = code.split('\n');
-    const defaultStyle: TextStyle = { color: fallbackColor };
-    lines = rawLines.map((line) => [{ content: line.length > 0 ? line : ' ', style: defaultStyle }]);
-  } else {
+  if (!normalized) {
+    const grammar = (Prism.languages as Record<string, any>)[language] ?? Prism.languages.javascript;
+    if (!grammar) {
+      const rawLines = code.split('\n');
+      const defaultStyle: TextStyle = { color: fallbackColor };
+      const lines = rawLines.map((line) => [{ content: line.length > 0 ? line : ' ', style: defaultStyle }]);
+      tokenizedLinesCache.set(cacheKey, lines);
+      return lines;
+    }
     const rawTokens = Prism.tokenize(code, grammar);
-    const normalized = normalizeTokens(rawTokens);
-    lines = normalized.map((line) => {
-      const merged: HighlightedToken[] = [];
-      for (let i = 0; i < line.length; i++) {
-        const token = line[i];
-        if (token.empty) {
-          continue;
-        }
-        const style = resolveTokenStyle(token.types, theme, language, fallbackColor);
-        if (
-          merged.length > 0 &&
-          merged[merged.length - 1].style.color === style.color &&
-          merged[merged.length - 1].style.fontStyle === style.fontStyle &&
-          merged[merged.length - 1].style.fontWeight === style.fontWeight
-        ) {
-          merged[merged.length - 1].content += token.content;
-        } else {
-          merged.push({ content: token.content, style });
-        }
-      }
-      return merged;
-    });
+    normalized = normalizeTokens(rawTokens);
+    if (tokenAstCache.size >= MAX_TOKEN_CACHE_SIZE) {
+      const oldestAstKey = tokenAstCache.keys().next().value;
+      if (oldestAstKey !== undefined) tokenAstCache.delete(oldestAstKey);
+    }
+    tokenAstCache.set(astKey, normalized);
   }
+
+  const lines = normalized.map((line) => {
+    const merged: HighlightedToken[] = [];
+    for (let i = 0; i < line.length; i++) {
+      const token = line[i];
+      if (token.empty) {
+        continue;
+      }
+      const style = resolveTokenStyle(token.types, theme, language, fallbackColor);
+      if (
+        merged.length > 0 &&
+        merged[merged.length - 1].style.color === style.color &&
+        merged[merged.length - 1].style.fontStyle === style.fontStyle &&
+        merged[merged.length - 1].style.fontWeight === style.fontWeight
+      ) {
+        merged[merged.length - 1].content += token.content;
+      } else {
+        merged.push({ content: token.content, style });
+      }
+    }
+    return merged;
+  });
 
   if (tokenizedLinesCache.size >= MAX_TOKEN_CACHE_SIZE) {
     const oldestKey = tokenizedLinesCache.keys().next().value;
@@ -212,8 +223,8 @@ export function HighlightedCode({
   startLine?: number;
   selectable?: boolean;
 }) {
-  const prismTheme = usePrismTheme();
   const colors = useThemeColors();
+  const prismTheme = colors.dark ? themes.vsDark : themes.vsLight;
   const renderMode = useAdaptiveRenderMode();
 
   // Fast path used while the surrounding list is flinging: skip Prism entirely
@@ -221,129 +232,69 @@ export function HighlightedCode({
   // version, so heights do not shift when it swaps back.
   if (renderMode === 'light') {
     const lines = code.split('\n');
-    if (selectable) {
-      return (
-        <View className="flex-row">
-          {showLineNumbers ? (
-            <LineNumberGutter
-              count={lines.length}
-              startLine={startLine}
-              fontSize={fontSize}
-              lineHeight={lineHeight}
-            />
-          ) : null}
-          <Text
-            selectable
-            style={{
-              fontSize,
-              color: colors.foreground,
-              ...(lineHeight ? { lineHeight, includeFontPadding: false } : null),
-            }}
-            className="font-mono"
-          >
-            {code}
-          </Text>
-        </View>
-      );
-    }
-    return (
-      <View>
-        {lines.map((line, lineIndex) => (
-          <View
-            key={lineIndex}
-            className="flex-row"
-            style={lineHeight ? { height: lineHeight } : undefined}
-          >
-            {showLineNumbers ? (
-              <Text
-                style={{ fontSize, color: colors.muted, width: 44, textAlign: 'right' }}
-                className="pr-2 font-mono"
-              >
-                {startLine + lineIndex}
-              </Text>
-            ) : null}
-            <Text
-              numberOfLines={lineHeight ? 1 : undefined}
-              style={{ fontSize, color: colors.foreground }}
-              className="font-mono"
-            >
-              {line.length > 0 ? line : ' '}
-            </Text>
-          </View>
-        ))}
-      </View>
-    );
-  }
-
-  const tokens = getHighlightedTokens(code, language, prismTheme, colors.foreground);
-
-  if (selectable) {
     return (
       <View className="flex-row">
         {showLineNumbers ? (
           <LineNumberGutter
-            count={tokens.length}
+            count={lines.length}
             startLine={startLine}
             fontSize={fontSize}
             lineHeight={lineHeight}
           />
         ) : null}
         <Text
-          selectable
+          selectable={selectable}
           style={{
             fontSize,
+            color: colors.foreground,
+            flexShrink: 1,
             ...(lineHeight ? { lineHeight, includeFontPadding: false } : null),
           }}
           className="font-mono"
         >
-          {tokens.map((line, lineIndex) => (
-            <Text key={lineIndex} style={{ fontSize }} className="font-mono">
-              {line.map((token, tokenIndex) => (
-                <Text key={tokenIndex} style={token.style} className="font-mono">
-                  {token.content}
-                </Text>
-              ))}
-              {lineIndex < tokens.length - 1 ? '\n' : ''}
-            </Text>
-          ))}
+          {code}
         </Text>
       </View>
     );
   }
 
+  const tokens = getHighlightedTokens(code, language, prismTheme, colors.foreground);
+
   return (
-    <View>
-      {tokens.map((line, lineIndex) => (
-        <View
-          key={lineIndex}
-          className="flex-row"
-          style={lineHeight ? { height: lineHeight } : undefined}
-        >
-          {showLineNumbers ? (
-            <Text
-              style={{ fontSize, color: colors.muted, width: 44, textAlign: 'right' }}
-              className="pr-2 font-mono"
-            >
-              {startLine + lineIndex}
-            </Text>
-          ) : null}
-          <Text
-            numberOfLines={lineHeight ? 1 : undefined}
-            style={{ fontSize }}
-            className="font-mono"
-          >
+    <View className="flex-row">
+      {showLineNumbers ? (
+        <LineNumberGutter
+          count={tokens.length}
+          startLine={startLine}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+        />
+      ) : null}
+      <Text
+        selectable={selectable}
+        style={{
+          fontSize,
+          fontFamily: 'monospace',
+          flexShrink: 1,
+          ...(lineHeight ? { lineHeight, includeFontPadding: false } : null),
+        }}
+        className="font-mono"
+      >
+        {tokens.map((line, lineIndex) => (
+          <Text key={lineIndex}>
             {line.length === 0 ? (
-              <Text style={{ fontSize }}> </Text>
+              ' '
             ) : (
               line.map((token, tokenIndex) => (
-                <Text key={tokenIndex} style={token.style} className="font-mono">
+                <Text key={tokenIndex} style={token.style}>
                   {token.content}
                 </Text>
               ))
             )}
+            {lineIndex < tokens.length - 1 ? '\n' : ''}
           </Text>
-        </View>
-      ))}
+        ))}
+      </Text>
     </View>
   );
 }
@@ -387,8 +338,8 @@ function LineNumberGutter({
  * render individual lines without re-highlighting the whole file.
  */
 export function useHighlightedLines(code: string, language: Language) {
-  const prismTheme = usePrismTheme();
   const colors = useThemeColors();
+  const prismTheme = colors.dark ? themes.vsDark : themes.vsLight;
   return useMemo(
     () => getHighlightedTokens(code, language, prismTheme, colors.foreground),
     [code, language, prismTheme, colors.foreground],

@@ -3,6 +3,7 @@ import {
   CornerUpLeftIcon,
   CpuIcon,
   FolderOpenIcon,
+  FolderXIcon,
   GitCompareIcon,
   GitForkIcon,
   Link2OffIcon,
@@ -208,6 +209,8 @@ export const SessionMenuSheet = memo(forwardRef<
     onOpenChildren: () => void;
     childCount: number | undefined;
     onOpenParent?: () => void;
+    projectDirectory?: string;
+    onCloseProject?: () => void;
   }
 >(function SessionMenuSheet(
   {
@@ -228,6 +231,8 @@ export const SessionMenuSheet = memo(forwardRef<
     onOpenChildren,
     childCount,
     onOpenParent,
+    projectDirectory,
+    onCloseProject,
   },
   ref,
 ) {
@@ -364,6 +369,16 @@ export const SessionMenuSheet = memo(forwardRef<
       });
     }
 
+    if (projectDirectory && onCloseProject) {
+      items.push({
+        key: 'close-project',
+        icon: FolderXIcon,
+        label: 'Close project',
+        hint: 'Unload current workspace',
+        onPress: onCloseProject,
+      });
+    }
+
     return items;
   }, [
     modelLabel,
@@ -385,6 +400,8 @@ export const SessionMenuSheet = memo(forwardRef<
     childCount,
     onOpenChildren,
     onOpenParent,
+    projectDirectory,
+    onCloseProject,
   ]);
 
   const iconColor = colors.foreground;

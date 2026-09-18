@@ -1,5 +1,6 @@
-import { CheckIcon, FolderIcon, FolderOpenIcon } from 'lucide-react-native';
-import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { CheckIcon, FolderIcon, FolderOpenIcon, XIcon } from 'lucide-react-native';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,9 +14,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 
+import { useDismissedProjects } from '@/chat/dismissed-projects';
+import type { OpencodeProject } from '@/chat/opencode';
 import type { ServerConfig } from '@/chat/settings';
-import { useProjects } from '@/chat/use-workspace';
+import { useDirectoryAutocomplete, useProjects } from '@/chat/use-workspace';
+import { createClientFromServer } from '@/chat/use-opencode-providers';
 import { Button } from '@/components/ui/button';
+import { useDialog } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useThemeColors } from '@/hooks/use-theme-colors';
@@ -42,6 +47,7 @@ export function NewSessionSheet({
   currentDirectory,
   busy = false,
   onCreate,
+  onCloseProject,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -49,21 +55,74 @@ export function NewSessionSheet({
   currentDirectory: string;
   busy?: boolean;
   onCreate: (directory: string) => void;
+  onCloseProject?: (project?: OpencodeProject) => Promise<void> | void;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const colors = useThemeColors();
+  const { confirm } = useDialog();
+  const queryClient = useQueryClient();
   const keyboardHeight = useKeyboardHeight();
   const listMaxHeight =
     keyboardHeight > 0
-      ? Math.max(120, height - keyboardHeight - 380)
-      : Math.min(height * 0.45, 260);
+      ? Math.max(100, height - keyboardHeight - 420)
+      : Math.min(height * 0.35, 220);
   const projects = useProjects(server, visible);
+  const { dismissed, dismissProject, undismissProject } = useDismissedProjects(server);
   const [manualPath, setManualPath] = useState('');
+  const { suggestions, isLoading: isCompleting } = useDirectoryAutocomplete(
+    server,
+    manualPath,
+    visible,
+  );
 
-  const known = projects.data ?? [];
+  const known = useMemo(
+    () => (projects.data ?? []).filter((project) => !dismissed.has(project.id)),
+    [projects.data, dismissed],
+  );
   const trimmedPath = manualPath.trim();
   const canUseManual = trimmedPath.startsWith('/') && trimmedPath.length > 1;
+
+  const handleCreate = useCallback(
+    (directory: string) => {
+      const matching = (projects.data ?? []).find((p) => p.worktree === directory);
+      if (matching) {
+        undismissProject(matching.id);
+      }
+      onCreate(directory);
+    },
+    [onCreate, projects.data, undismissProject],
+  );
+
+  const handleCloseProject = useCallback(
+    async (project: OpencodeProject) => {
+      const isCurrent = project.worktree === currentDirectory;
+      const name = folderName(project.worktree);
+      const confirmed = await confirm({
+        title: 'Close project',
+        message: isCurrent
+          ? `Close "${name}"? This will unload the active workspace and reset to the server default.`
+          : `Close "${name}"? This will unload and remove this project from the workspace list.`,
+        confirmLabel: 'Close project',
+        destructive: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+      dismissProject(project.id);
+      try {
+        const client = createClientFromServer(server);
+        await client.disposeInstance(project.worktree);
+      } catch {
+        // Best effort
+      }
+      if (isCurrent && onCloseProject) {
+        await onCloseProject(project);
+      }
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+    [confirm, currentDirectory, dismissProject, onCloseProject, queryClient, server],
+  );
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
@@ -83,7 +142,7 @@ export function NewSessionSheet({
             </View>
             <Text className="mb-3 text-xs text-muted">Choose the project folder for this session</Text>
 
-            <Button disabled={busy} onPress={() => onCreate(currentDirectory)}>
+            <Button disabled={busy} onPress={() => handleCreate(currentDirectory)}>
               {busy
                 ? 'Creating…'
                 : currentDirectory
@@ -109,26 +168,40 @@ export function NewSessionSheet({
                 known.map((project) => {
                   const isCurrent = project.worktree === currentDirectory;
                   return (
-                    <Pressable
+                    <View
                       key={project.id}
                       className={cn(
-                        'mb-1 flex-row items-center gap-3 rounded-xl px-3 py-2.5',
+                        'mb-1 flex-row items-center gap-3 rounded-xl px-3 py-2',
                         isCurrent ? 'bg-surface-secondary' : 'bg-transparent',
                       )}
-                      disabled={busy}
-                      onPress={() => onCreate(project.worktree)}
                     >
-                      <FolderIcon size={16} color={colors.muted} />
-                      <View className="flex-1">
-                        <Text className="text-sm text-foreground" numberOfLines={1}>
-                          {folderName(project.worktree)}
-                        </Text>
-                        <Text className="text-xs text-muted" numberOfLines={1} ellipsizeMode="head">
-                          {project.worktree}
-                        </Text>
-                      </View>
+                      <Pressable
+                        className="flex-1 flex-row items-center gap-3 py-0.5"
+                        disabled={busy}
+                        onPress={() => handleCreate(project.worktree)}
+                      >
+                        <FolderIcon size={16} color={colors.muted} />
+                        <View className="flex-1">
+                          <Text className="text-sm text-foreground" numberOfLines={1}>
+                            {folderName(project.worktree)}
+                          </Text>
+                          <Text className="text-xs text-muted" numberOfLines={1} ellipsizeMode="head">
+                            {project.worktree}
+                          </Text>
+                        </View>
+                      </Pressable>
                       {isCurrent ? <CheckIcon size={16} color={colors.success} /> : null}
-                    </Pressable>
+                      <Pressable
+                        accessibilityLabel={`Close ${folderName(project.worktree)} project`}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        className="rounded-lg p-1 active:bg-surface"
+                        disabled={busy}
+                        onPress={() => void handleCloseProject(project)}
+                      >
+                        <XIcon size={16} color={colors.muted} />
+                      </Pressable>
+                    </View>
                   );
                 })
               )}
@@ -149,15 +222,49 @@ export function NewSessionSheet({
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                {manualPath ? (
+                  <Pressable hitSlop={8} onPress={() => setManualPath('')}>
+                    <XIcon size={16} color={colors.muted} />
+                  </Pressable>
+                ) : null}
               </View>
               <Button
                 variant="outline"
                 disabled={!canUseManual || busy}
-                onPress={() => onCreate(trimmedPath)}
+                onPress={() => handleCreate(trimmedPath)}
               >
                 Use
               </Button>
             </View>
+
+            {suggestions.length > 0 ? (
+              <View className="mt-2 overflow-hidden rounded-xl border border-border bg-surface-secondary">
+                {suggestions.map((item, index) => (
+                  <Pressable
+                    key={item.absolute}
+                    className={cn(
+                      'flex-row items-center gap-2.5 px-3 py-2 active:bg-surface',
+                      index < suggestions.length - 1 && 'border-b border-border/40',
+                    )}
+                    onPress={() => {
+                      setManualPath(`${item.absolute}/`);
+                    }}
+                  >
+                    <FolderIcon size={14} color={colors.muted} />
+                    <Text className="flex-1 text-xs text-foreground" numberOfLines={1}>
+                      <Text className="text-muted">
+                        {item.absolute.slice(0, item.absolute.lastIndexOf('/') + 1)}
+                      </Text>
+                      <Text className="font-semibold text-foreground">{item.name}</Text>
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : isCompleting && manualPath.startsWith('/') ? (
+              <View className="mt-2 items-center py-2">
+                <Spinner size={14} />
+              </View>
+            ) : null}
           </View>
       </KeyboardAvoidingView>
     </BottomSheet>

@@ -163,3 +163,90 @@ export function useFileContent(server: ServerConfig, path: string | undefined, e
     staleTime: 15 * 1000,
   });
 }
+
+export type DirectorySuggestion = {
+  name: string;
+  absolute: string;
+};
+
+/**
+ * Autocomplete directory suggestions when typing absolute paths in the folder
+ * picker. Queries subdirectories of the parent path on the server.
+ */
+export function useDirectoryAutocomplete(
+  server: ServerConfig,
+  input: string,
+  enabled = true,
+) {
+  const trimmed = input.trim();
+  const isPath = trimmed.startsWith('/');
+
+  let parentDir = '/';
+  let prefix = '';
+  if (isPath) {
+    if (trimmed === '/') {
+      parentDir = '/';
+      prefix = '';
+    } else if (trimmed.endsWith('/')) {
+      parentDir = trimmed.replace(/\/+$/, '') || '/';
+      prefix = '';
+    } else {
+      const lastSlash = trimmed.lastIndexOf('/');
+      if (lastSlash === 0) {
+        parentDir = '/';
+        prefix = trimmed.slice(1);
+      } else {
+        parentDir = trimmed.slice(0, lastSlash);
+        prefix = trimmed.slice(lastSlash + 1);
+      }
+    }
+  }
+
+  const queryKey = useMemo(
+    () => [
+      'directory-autocomplete',
+      server.serverUrl,
+      server.username,
+      server.password,
+      parentDir,
+    ],
+    [server.serverUrl, server.username, server.password, parentDir],
+  );
+
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const client = createClientFromServer({ ...server, directory: parentDir });
+      const nodes = await client.listFiles('.');
+      return nodes
+        .filter((node) => node.type === 'directory')
+        .map((node) => ({
+          name: node.name,
+          absolute:
+            node.absolute ||
+            (parentDir === '/' ? `/${node.name}` : `${parentDir}/${node.name}`),
+        }));
+    },
+    enabled: enabled && isPath,
+    staleTime: 10 * 1000,
+    retry: false,
+  });
+
+  const suggestions = useMemo<DirectorySuggestion[]>(() => {
+    if (!isPath || !query.data) {
+      return [];
+    }
+    const showHidden = prefix.startsWith('.');
+    const lowerPrefix = prefix.toLowerCase();
+    return query.data
+      .filter((dir) => {
+        if (!showHidden && dir.name.startsWith('.')) {
+          return false;
+        }
+        return dir.name.toLowerCase().startsWith(lowerPrefix);
+      })
+      .slice(0, 5);
+  }, [isPath, query.data, prefix]);
+
+  return { suggestions, isLoading: query.isLoading && isPath };
+}
