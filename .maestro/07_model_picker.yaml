@@ -1,0 +1,17 @@
+appId: com.opencode.expo
+---
+- extendedWaitUntil:
+    visible: "Session options"
+    timeout: 60000
+- tapOn: "Session options"
+- extendedWaitUntil:
+    visible: "Model"
+    timeout: 60000
+- tapOn: "Model"
+- extendedWaitUntil:
+    visible: "Select model"
+    timeout: 60000
+- tapOn: "Done"
+- extendedWaitUntil:
+    notVisible: "Select model"
+    timeout: 60000

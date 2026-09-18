@@ -4,9 +4,8 @@ import {
   SearchIcon,
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -17,6 +16,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { useChatSettings, type ServerConfig } from '@/chat/settings';
 import { useDialog } from '@/components/ui/dialog';
 import {
@@ -111,7 +111,7 @@ function sourceTagLabel(
   return 'Other';
 }
 
-function ProvidersMain({
+const ProvidersMain = memo(function ProvidersMain({
   server,
   onConnect,
   onCustom,
@@ -278,7 +278,7 @@ function ProvidersMain({
       </Button>
     </View>
   );
-}
+});
 
 function ConnectPicker({
   server,
@@ -395,7 +395,11 @@ function ConnectPicker({
  * Bottom sheet for managing providers and model visibility. Height changes
  * (tab switches, collapsing groups) are animated via a layout animation.
  */
-export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: ProvidersSheetProps) {
+export const ProvidersSheet = memo(function ProvidersSheet({
+  visible,
+  onClose,
+  initialTab = 'providers',
+}: ProvidersSheetProps) {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
   const { height } = useWindowDimensions();
@@ -434,25 +438,18 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
 
   const showTabs = view.name === 'tabs';
 
+  const handleRequestClose = () => {
+    if (!showTabs) {
+      goBack();
+      return;
+    }
+    onClose();
+  };
+
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
-      visible={visible}
-      animationType="slide"
-      onRequestClose={() => {
-        if (!showTabs) {
-          goBack();
-          return;
-        }
-        onClose();
-      }}
-    >
-      <View className="flex-1 justify-end">
-        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-        <KeyboardAvoidingView behavior="padding">
+    <BottomSheet visible={visible} onClose={handleRequestClose}>
+      <KeyboardAvoidingView behavior="padding">
           <View
-            className="rounded-t-3xl bg-surface pt-4"
             style={{
               paddingBottom: insets.bottom + 16,
               paddingLeft: insets.left + 16,
@@ -462,7 +459,12 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
             <View className="mb-3 flex-row items-center justify-between">
               <View className="flex-row items-center gap-1">
                 {!showTabs ? (
-                  <Pressable hitSlop={8} onPress={goBack} className="pr-1">
+                  <Pressable
+                    accessibilityLabel="Back to providers"
+                    hitSlop={8}
+                    onPress={goBack}
+                    className="pr-1"
+                  >
                     <ChevronLeftIcon size={20} color={colors.muted} />
                   </Pressable>
                 ) : null}
@@ -504,18 +506,22 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
               keyboardShouldPersistTaps="handled"
               style={{ maxHeight: scrollMaxHeight }}
             >
-              {view.name === 'tabs' && tab === 'providers' ? (
-                <ProvidersMain
-                  server={activeServer}
-                  onConnect={(providerID, providerName) =>
-                    setView({ name: 'connect', providerID, providerName })
-                  }
-                  onCustom={() => setView({ name: 'custom' })}
-                  onViewAll={() => setView({ name: 'picker' })}
-                />
-              ) : null}
-              {view.name === 'tabs' && tab === 'models' ? (
-                <ModelsTab server={activeServer} />
+              {view.name === 'tabs' ? (
+                <>
+                  <View style={tab === 'providers' ? undefined : { display: 'none' }}>
+                    <ProvidersMain
+                      server={activeServer}
+                      onConnect={(providerID, providerName) =>
+                        setView({ name: 'connect', providerID, providerName })
+                      }
+                      onCustom={() => setView({ name: 'custom' })}
+                      onViewAll={() => setView({ name: 'picker' })}
+                    />
+                  </View>
+                  <View style={tab === 'models' ? undefined : { display: 'none' }}>
+                    <ModelsTab server={activeServer} />
+                  </View>
+                </>
               ) : null}
               {view.name === 'picker' ? (
                 <ConnectPicker
@@ -539,8 +545,7 @@ export function ProvidersSheet({ visible, onClose, initialTab = 'providers' }: P
               ) : null}
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
+      </KeyboardAvoidingView>
+    </BottomSheet>
   );
-}
+});

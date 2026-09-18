@@ -1,7 +1,6 @@
 import { FileIcon, SearchIcon } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -12,6 +11,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import type { ServerConfig } from '@/chat/settings';
 import { useFileSearch } from '@/chat/use-workspace';
 import { Spinner } from '@/components/ui/spinner';
@@ -38,13 +38,7 @@ export function QuickOpenSheet({
   onInsertMention: (path: string) => void;
 }) {
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <BottomSheet visible={visible} onClose={onClose}>
       {/* Mounted only while open so each open starts from an empty query. */}
       {visible ? (
         <QuickOpenSheetContent
@@ -53,7 +47,7 @@ export function QuickOpenSheet({
           onInsertMention={onInsertMention}
         />
       ) : null}
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -86,11 +80,8 @@ function QuickOpenSheetContent({
       : Math.min(height * 0.5, 400);
 
   return (
-    <View className="flex-1 justify-end">
-      <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-      <KeyboardAvoidingView behavior="padding">
+    <KeyboardAvoidingView behavior="padding">
           <View
-            className="rounded-t-3xl bg-surface pt-4"
             style={{
               paddingBottom: insets.bottom + 16,
               paddingLeft: insets.left + 16,
@@ -166,7 +157,6 @@ function QuickOpenSheetContent({
               Tap a file to mention it in your message
             </Text>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+    </KeyboardAvoidingView>
   );
 }

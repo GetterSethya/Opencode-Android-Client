@@ -5,7 +5,7 @@ import {
   GitForkIcon,
   Trash2Icon,
 } from 'lucide-react-native';
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Clipboard, Image, Text, View } from 'react-native';
 
 import type { PermissionReply } from '@/chat/opencode';
@@ -55,9 +55,67 @@ import { useThemeColors } from '@/hooks/use-theme-colors';
 function formatDuration(durationMs: number) {
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
   const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+  const seconds = Math.floor(totalSeconds % 60);
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
+
+/**
+ * Coalesces rapid text updates (SSE deltas) into trailing-edge commits, so
+ * the expensive Markdown + Prism subtree re-renders at most once per window
+ * instead of once per chunk. Flushes immediately when streaming stops and on
+ * unmount, so no content is ever lost or left stale.
+ */
+const THROTTLE_WINDOW_MS = 200;
+
+function useThrottledText(text: string, active: boolean): string {
+  const [shown, setShown] = useState(text);
+  const latestRef = useRef(text);
+  latestRef.current = text;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      setShown(text);
+      return;
+    }
+    if (timerRef.current) {
+      return;
+    }
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      setShown(latestRef.current);
+    }, THROTTLE_WINDOW_MS);
+  }, [text, active]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  return active ? shown : text;
+}
+
+const StreamingTextPart = memo(function StreamingTextPart({
+  text,
+  isStreaming,
+}: {
+  text: string;
+  isStreaming: boolean;
+}) {
+  const displayText = useThrottledText(text, isStreaming);
+  return (
+    <MessageResponse isStreaming={isStreaming}>{displayText}</MessageResponse>
+  );
+});
 
 export const MessageItem = memo(function MessageItem({
   message,
@@ -166,7 +224,7 @@ export const MessageItem = memo(function MessageItem({
             return isUser ? (
               <MessageText key={index}>{part.text}</MessageText>
             ) : (
-              <MessageResponse key={index}>{part.text}</MessageResponse>
+              <StreamingTextPart key={index} text={part.text} isStreaming={isStreaming} />
             );
           }
 

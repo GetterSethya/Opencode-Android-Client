@@ -11,7 +11,6 @@ import {
 } from 'lucide-react-native';
 import { useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -22,6 +21,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { useChatSettings, type ServerConfig, type ThemePreference } from '@/chat/settings';
 import { appVersionLabel } from '@/chat/app-info';
 import { useDialog } from '@/components/ui/dialog';
@@ -55,16 +55,10 @@ const inputClass =
 
 export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsFormProps) {
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <BottomSheet visible={visible} onClose={onClose}>
       {/* Mounted only while open so each open starts on the main settings view. */}
       {visible ? <SettingsFormContent onClose={onClose} onOpenProviders={onOpenProviders} /> : null}
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -154,11 +148,8 @@ function SettingsFormContent({
   };
 
   return (
-    <View className="flex-1 justify-end">
-        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-        <KeyboardAvoidingView behavior="padding">
+    <KeyboardAvoidingView behavior="padding">
           <View
-            className="rounded-t-3xl bg-surface pt-4"
             style={{
               paddingBottom: insets.bottom + 16,
               paddingLeft: insets.left + 16,
@@ -342,8 +333,7 @@ function SettingsFormContent({
               opencode android client {appVersionLabel()}
             </Text>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -1,0 +1,37 @@
+appId: com.opencode.expo
+---
+- extendedWaitUntil:
+    visible: "Open sessions"
+    timeout: 60000
+- tapOn: "Open sessions"
+- extendedWaitUntil:
+    visible: "Server settings"
+    timeout: 60000
+- tapOn: "Server settings"
+- extendedWaitUntil:
+    visible: "Manage providers & models"
+    timeout: 60000
+- tapOn: "Manage providers & models"
+- extendedWaitUntil:
+    visible: "Models & providers"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: "Connected"
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      text: "View all providers"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "View all providers"
+- extendedWaitUntil:
+    visible: "All providers"
+    timeout: 60000
+- tapOn: "Back to providers"
+- extendedWaitUntil:
+    visible: "Models & providers"
+    timeout: 60000
+- tapOn: "Done"
+- extendedWaitUntil:
+    notVisible: "Models & providers"
+    timeout: 60000

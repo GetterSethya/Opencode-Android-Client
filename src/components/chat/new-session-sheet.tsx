@@ -1,7 +1,6 @@
 import { CheckIcon, FolderIcon, FolderOpenIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -11,6 +10,8 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 
 import type { ServerConfig } from '@/chat/settings';
 import { useProjects } from '@/chat/use-workspace';
@@ -65,18 +66,9 @@ export function NewSessionSheet({
   const canUseManual = trimmedPath.startsWith('/') && trimmedPath.length > 1;
 
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View className="flex-1 justify-end">
-        <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-        <KeyboardAvoidingView behavior="padding">
+    <BottomSheet visible={visible} onClose={onClose}>
+      <KeyboardAvoidingView behavior="padding">
           <View
-            className="rounded-t-3xl bg-surface pt-4"
             style={{
               paddingBottom: insets.bottom + 16,
               paddingLeft: insets.left + 16,
@@ -167,8 +159,7 @@ export function NewSessionSheet({
               </Button>
             </View>
           </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
+      </KeyboardAvoidingView>
+    </BottomSheet>
   );
 }

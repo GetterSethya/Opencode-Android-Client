@@ -1,0 +1,13 @@
+appId: com.opencode.expo
+---
+- extendedWaitUntil:
+    visible: "Run shell command"
+    timeout: 60000
+- tapOn: "Run shell command"
+- extendedWaitUntil:
+    visible: "git status"
+    timeout: 60000
+- tapOn: "Cancel"
+- extendedWaitUntil:
+    notVisible: "git status"
+    timeout: 60000

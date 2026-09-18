@@ -52,6 +52,7 @@ export type ConversationProps = {
   hasMoreOlder?: boolean;
   ListHeaderComponent?: ComponentType<unknown> | ReactElement | null;
   ListFooterComponent?: ComponentType<unknown> | ReactElement | null;
+  ListEmptyComponent?: ComponentType<unknown> | ReactElement | null;
 };
 
 export function Conversation({
@@ -61,123 +62,80 @@ export function Conversation({
   onStartReached,
   isLoadingOlder = false,
   hasMoreOlder = false,
+  ListHeaderComponent,
   ListFooterComponent,
+  ListEmptyComponent,
 }: ConversationProps) {
   const listRef = useRef<FlatList<UIMessage> | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  // FlatList has no onStartReached, so latch the callback until the user
-  // scrolls away from the top and back to avoid firing it on every scroll event.
-  const startReachedRef = useRef(false);
-  // Auto-follow is active whenever the user is near the bottom.
-  // Scrolling up unpins; scrolling back to the bottom re-pins.
-  const pinnedToBottomRef = useRef(true);
-  // While the user is actively dragging the screen, auto-scroll is completely
-  // disabled so it never fights the user's finger.
-  const isDraggingRef = useRef(false);
+
+  // Inverted data: newest messages are at index 0 (bottom of screen)
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   const scrollToBottom = useCallback(() => {
-    isDraggingRef.current = false;
-    pinnedToBottomRef.current = true;
     setIsAtBottom(true);
-    listRef.current?.scrollToEnd({ animated: true });
-  }, []);
-
-  const scrollToEndIfPinned = useCallback((animated = false) => {
-    if (pinnedToBottomRef.current && !isDraggingRef.current) {
-      listRef.current?.scrollToEnd({ animated });
-    }
-  }, []);
-
-  // Returns true when the list is scrolled within ~one row of the end.
-  const computeAtBottom = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-    return contentSize.height - contentOffset.y - layoutMeasurement.height < 48;
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const atBottom = computeAtBottom(event);
-      setIsAtBottom(atBottom);
-      if (atBottom && !isDraggingRef.current) {
-        pinnedToBottomRef.current = true;
-      }
-
-      // Only trigger loading older messages when the user has explicitly
-      // scrolled up to the top and the list actually has scrollable content.
-      const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-      if (!onStartReached || pinnedToBottomRef.current || contentSize.height <= layoutMeasurement.height) {
-        return;
-      }
-
-      const distanceFromTop = contentOffset.y;
-      if (distanceFromTop <= 0) {
-        if (!startReachedRef.current) {
-          startReachedRef.current = true;
-          onStartReached();
-        }
-      } else if (distanceFromTop > 100) {
-        startReachedRef.current = false;
-      }
-    },
-    [computeAtBottom, onStartReached],
-  );
-
-  const handleScrollBeginDrag = useCallback(() => {
-    // Immediately unpin and lock out programmatic scrolling while user drags.
-    isDraggingRef.current = true;
-    pinnedToBottomRef.current = false;
-  }, []);
-
-  const handleScrollEndDrag = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      isDraggingRef.current = false;
-      const atBottom = computeAtBottom(event);
-      pinnedToBottomRef.current = atBottom;
+      const { contentOffset } = event.nativeEvent;
+      // In an inverted list, offset < 48 is at the bottom (newest items).
+      const atBottom = contentOffset.y < 48;
       setIsAtBottom(atBottom);
     },
-    [computeAtBottom],
+    [],
   );
 
-  const handleMomentumScrollEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      isDraggingRef.current = false;
-      const atBottom = computeAtBottom(event);
-      pinnedToBottomRef.current = atBottom;
-      setIsAtBottom(atBottom);
-    },
-    [computeAtBottom],
-  );
-
-  const handleContentSizeChange = useCallback(() => {
-    scrollToEndIfPinned();
-  }, [scrollToEndIfPinned]);
-
-  useEffect(() => {
-    scrollToEndIfPinned();
-  }, [messages, scrollToEndIfPinned]);
+  const handleEndReached = useCallback(() => {
+    if (hasMoreOlder && !isLoadingOlder && onStartReached) {
+      onStartReached();
+    }
+  }, [hasMoreOlder, isLoadingOlder, onStartReached]);
 
   const contextValue = useMemo(
     () => ({ isAtBottom, scrollToBottom }),
     [isAtBottom, scrollToBottom],
   );
 
+  if (messages.length === 0) {
+    return (
+      <ConversationContext.Provider value={contextValue}>
+        <View className={cn('relative flex-1', className)}>
+          {ListEmptyComponent ? (
+            typeof ListEmptyComponent === 'function' ? (
+              <ListEmptyComponent />
+            ) : (
+              ListEmptyComponent
+            )
+          ) : (
+            <ConversationEmptyState />
+          )}
+        </View>
+      </ConversationContext.Provider>
+    );
+  }
+
   return (
     <ConversationContext.Provider value={contextValue}>
       <View className={cn('relative flex-1', className)}>
         <FlatList
           ref={listRef}
-          data={messages}
+          data={reversedMessages}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
+          inverted
           onScroll={handleScroll}
-          onScrollBeginDrag={handleScrollBeginDrag}
-          onScrollEndDrag={handleScrollEndDrag}
-          onMomentumScrollEnd={handleMomentumScrollEnd}
-          onContentSizeChange={handleContentSizeChange}
           scrollEventThrottle={16}
+          windowSize={7}
+          maxToRenderPerBatch={5}
+          removeClippedSubviews
           contentContainerStyle={{ gap: 24, padding: 16 }}
           style={{ flex: 1 }}
-          ListHeaderComponent={
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.3}
+          ListHeaderComponent={ListFooterComponent}
+          ListFooterComponent={
             isLoadingOlder ? (
               <View className="flex-row items-center justify-center gap-2 py-4">
                 <Spinner size={14} />
@@ -187,8 +145,6 @@ export function Conversation({
               <View className="py-4" />
             ) : null
           }
-          ListFooterComponent={ListFooterComponent}
-          ListEmptyComponent={<ConversationEmptyState />}
         />
         <ConversationScrollButton />
       </View>

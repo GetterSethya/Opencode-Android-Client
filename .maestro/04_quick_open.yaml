@@ -1,0 +1,13 @@
+appId: com.opencode.expo
+---
+- extendedWaitUntil:
+    visible: "Find file to mention"
+    timeout: 60000
+- tapOn: "Find file to mention"
+- extendedWaitUntil:
+    visible: "Tap a file to mention it in your message"
+    timeout: 60000
+- tapOn: "Cancel"
+- extendedWaitUntil:
+    notVisible: "Tap a file to mention it in your message"
+    timeout: 60000

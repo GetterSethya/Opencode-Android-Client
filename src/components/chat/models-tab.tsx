@@ -1,5 +1,5 @@
 import { ChevronDownIcon, ChevronRightIcon, SearchIcon, XIcon } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, Switch, Text, TextInput, View } from 'react-native';
 
 import {
@@ -20,12 +20,55 @@ type GroupedModels = {
   models: { id: string; name: string }[];
 };
 
-export function ModelsTab({ server }: { server: ServerConfig }) {
+const ModelVisibilityRow = memo(function ModelVisibilityRow({
+  providerID,
+  model,
+  checked,
+  onToggle,
+  trackBorderColor,
+  trackSuccessColor,
+  thumbColor,
+}: {
+  providerID: string;
+  model: { id: string; name: string };
+  checked: boolean;
+  onToggle: (providerID: string, modelID: string, value: boolean) => void;
+  trackBorderColor: string;
+  trackSuccessColor: string;
+  thumbColor: string;
+}) {
+  const handleToggle = useCallback(
+    (value: boolean) => onToggle(providerID, model.id, value),
+    [onToggle, providerID, model.id],
+  );
+  return (
+    <View className="flex-row items-center gap-3 rounded-xl px-3 py-2.5">
+      <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
+        {model.name}
+      </Text>
+      <Switch
+        value={checked}
+        onValueChange={handleToggle}
+        trackColor={{ false: trackBorderColor, true: trackSuccessColor }}
+        thumbColor={thumbColor}
+      />
+    </View>
+  );
+});
+
+export const ModelsTab = memo(function ModelsTab({ server }: { server: ServerConfig }) {
   const colors = useThemeColors();
   const catalog = useProviderCatalog(server, true);
   const visibility = useModelVisibility();
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const handleToggle = useCallback(
+    (providerID: string, modelID: string, value: boolean) => {
+      visibility.setVisibility({ providerID, modelID }, value);
+    },
+    [visibility.setVisibility],
+  );
 
   const groups = useMemo<GroupedModels[]>(() => {
     const connected = new Set(catalog.data?.connected ?? []);
@@ -94,6 +137,9 @@ export function ModelsTab({ server }: { server: ServerConfig }) {
   }, [metas]);
 
   const searching = query.trim().length > 0;
+  const trackBorderColor = colors.border;
+  const trackSuccessColor = colors.success;
+  const thumbColor = colors.surface;
 
   return (
     <View className="gap-3">
@@ -167,20 +213,16 @@ export function ModelsTab({ server }: { server: ServerConfig }) {
                         latest,
                       );
                       return (
-                        <View
+                        <ModelVisibilityRow
                           key={model.id}
-                          className="flex-row items-center gap-3 rounded-xl px-3 py-2.5"
-                        >
-                          <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
-                            {model.name}
-                          </Text>
-                          <Switch
-                            value={checked}
-                            onValueChange={(value) => visibility.setVisibility(key, value)}
-                            trackColor={{ false: colors.border, true: colors.success }}
-                            thumbColor={colors.surface}
-                          />
-                        </View>
+                          providerID={group.providerID}
+                          model={model}
+                          checked={checked}
+                          onToggle={handleToggle}
+                          trackBorderColor={trackBorderColor}
+                          trackSuccessColor={trackSuccessColor}
+                          thumbColor={thumbColor}
+                        />
                       );
                     })
                   : null}
@@ -191,4 +233,4 @@ export function ModelsTab({ server }: { server: ServerConfig }) {
       )}
     </View>
   );
-}
+});

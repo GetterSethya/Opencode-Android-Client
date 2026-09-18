@@ -1,5 +1,5 @@
 import Markdown from '@ronradtke/react-native-markdown-display';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Text, View } from 'react-native';
 
 import { useAdaptiveRenderMode } from '@/chat/adaptive-render';
@@ -11,7 +11,35 @@ import { CodeBlock } from './code-block';
 export type ResponseProps = {
   children: string;
   className?: string;
+  /**
+   * While streaming, fenced code blocks render as plain monospace text.
+   * Prism tokenizing the growing code on every chunk is the dominant
+   * per-chunk cost; full highlighting is applied once streaming completes.
+   */
+  isStreaming?: boolean;
 };
+
+/** Zero-Prism fallback for code fences inside a streaming message. */
+const StreamingCode = memo(function StreamingCode({
+  code,
+  dark,
+}: {
+  code: string;
+  dark: boolean;
+}) {
+  return (
+    <View className="overflow-hidden rounded-md bg-surface-secondary">
+      <View className="p-3">
+        <Text
+          className="font-mono"
+          style={{ fontSize: 12, color: dark ? '#fafafa' : '#18181b' }}
+        >
+          {code}
+        </Text>
+      </View>
+    </View>
+  );
+});
 
 const DARK_STYLES = {
   body: {
@@ -92,10 +120,24 @@ const MARKDOWN_RULES = {
   ),
 };
 
-export const Response = memo(function Response({ children, className }: ResponseProps) {
+export const Response = memo(function Response({
+  children,
+  className,
+  isStreaming = false,
+}: ResponseProps) {
   const { dark } = useThemeColors();
   const markdownStyles = dark ? DARK_STYLES : LIGHT_STYLES;
   const mode = useAdaptiveRenderMode();
+
+  const rules = useMemo(() => {
+    if (!isStreaming) {
+      return MARKDOWN_RULES;
+    }
+    const plainFence = (node: { key: string; content: string }) => (
+      <StreamingCode key={node.key} code={node.content} dark={dark} />
+    );
+    return { fence: plainFence, code_block: plainFence };
+  }, [isStreaming, dark]);
 
   // While the list is flinging, skip markdown parsing (and the syntax
   // highlighting it triggers) entirely — it is the dominant per-row cost and
@@ -115,7 +157,7 @@ export const Response = memo(function Response({ children, className }: Response
 
   return (
     <View className={cn('w-full', className)}>
-      <Markdown style={markdownStyles as never} rules={MARKDOWN_RULES as never}>
+      <Markdown style={markdownStyles as never} rules={rules as never}>
         {children}
       </Markdown>
     </View>

@@ -598,6 +598,18 @@ const mockMessages: UIMessage[] = [
   },
 ];
 
+const mockStreamingMessage: UIMessage = {
+  id: 'msg-stream',
+  role: 'assistant',
+  model: 'claude-3-7-sonnet',
+  parts: [
+    {
+      type: 'text',
+      text: `Here's the change I made:\n\n\`\`\`tsx\n${mockMediumCode}\n\`\`\`\n\nLet me verify it typechecks cleanly before summarizing.`,
+    },
+  ],
+};
+
 const mockSession: OpencodeSession = {
   id: 'session-123',
   title: 'Performance Optimization & Benchmarking',
@@ -1230,7 +1242,6 @@ export const benchmarkSuite: BenchmarkCase[] = [
     category: 'Chat Panels',
     render: () => (
       <SessionMenuSheet
-        visible={true}
         onClose={() => {}}
         modelLabel="claude-3-7-sonnet"
         onSelectModel={() => {}}
@@ -1373,6 +1384,27 @@ export const benchmarkSuite: BenchmarkCase[] = [
         message={mockMessages[1]}
         isLast={true}
         status="ready"
+        onFork={() => {}}
+        forkTarget={null}
+        forkDisabled={false}
+        pendingQuestions={[]}
+        onAnswerQuestion={async () => {}}
+        onRejectQuestion={async () => {}}
+        pendingPermissions={[]}
+        onReplyPermission={async () => {}}
+        onDeleteMessage={() => {}}
+        onRetry={() => {}}
+      />
+    ),
+  },
+  {
+    name: 'MessageItem - Streaming Text w/ Code Fence',
+    category: 'Complex Message/List',
+    render: () => (
+      <MessageItem
+        message={mockStreamingMessage}
+        isLast={true}
+        status="streaming"
         onFork={() => {}}
         forkTarget={null}
         forkDisabled={false}

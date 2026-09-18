@@ -87,13 +87,17 @@ export function MessageToolbar({ className, children }: MessageToolbarProps) {
 export type MessageResponseProps = {
   children: string;
   className?: string;
+  isStreaming?: boolean;
 };
 
 export const MessageResponse = memo(
-  ({ className, children }: MessageResponseProps) => (
-    <Response className={cn('w-full', className)}>{children}</Response>
+  ({ className, children, isStreaming = false }: MessageResponseProps) => (
+    <Response className={cn('w-full', className)} isStreaming={isStreaming}>
+      {children}
+    </Response>
   ),
-  (prev, next) => prev.children === next.children,
+  (prev, next) =>
+    prev.children === next.children && prev.isStreaming === next.isStreaming,
 );
 
 MessageResponse.displayName = 'MessageResponse';

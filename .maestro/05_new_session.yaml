@@ -1,0 +1,17 @@
+appId: com.opencode.expo
+---
+- extendedWaitUntil:
+    visible: "Open sessions"
+    timeout: 60000
+- tapOn: "Open sessions"
+- extendedWaitUntil:
+    visible: "New session"
+    timeout: 60000
+- tapOn: "New session"
+- extendedWaitUntil:
+    visible: "Project folders"
+    timeout: 60000
+- tapOn: "Cancel"
+- extendedWaitUntil:
+    notVisible: "Project folders"
+    timeout: 60000

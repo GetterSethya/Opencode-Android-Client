@@ -32,15 +32,18 @@ export function modelVisibilityKey(key: ModelVisibilityKey): string {
  */
 export function computeLatestModelKeys(models: ModelVisibilityMeta[]): Set<string> {
   const now = Date.now();
-  const recent = models.filter((model) => {
-    if (!model.release_date) {
-      return false;
-    }
+  type ParsedMeta = ModelVisibilityMeta & { parsedTime: number };
+  const recent: ParsedMeta[] = [];
+  
+  for (const model of models) {
+    if (!model.release_date) continue;
     const time = Date.parse(model.release_date);
-    return Number.isFinite(time) && Math.abs(now - time) < SIX_MONTHS_MS;
-  });
+    if (Number.isFinite(time) && Math.abs(now - time) < SIX_MONTHS_MS) {
+      recent.push({ ...model, parsedTime: time });
+    }
+  }
 
-  const byProvider = new Map<string, ModelVisibilityMeta[]>();
+  const byProvider = new Map<string, ParsedMeta[]>();
   for (const model of recent) {
     const list = byProvider.get(model.providerID) ?? [];
     list.push(model);
@@ -49,7 +52,7 @@ export function computeLatestModelKeys(models: ModelVisibilityMeta[]): Set<strin
 
   const latest = new Set<string>();
   for (const list of byProvider.values()) {
-    const byFamily = new Map<string, ModelVisibilityMeta[]>();
+    const byFamily = new Map<string, ParsedMeta[]>();
     for (const model of list) {
       const family = model.family || model.modelID;
       const group = byFamily.get(family) ?? [];
@@ -57,9 +60,7 @@ export function computeLatestModelKeys(models: ModelVisibilityMeta[]): Set<strin
       byFamily.set(family, group);
     }
     for (const group of byFamily.values()) {
-      group.sort(
-        (a, b) => Date.parse(b.release_date as string) - Date.parse(a.release_date as string),
-      );
+      group.sort((a, b) => b.parsedTime - a.parsedTime);
       const newest = group[0];
       if (newest) {
         latest.add(modelVisibilityKey({ providerID: newest.providerID, modelID: newest.modelID }));
@@ -108,30 +109,47 @@ function parseStored(raw: string | null): StoredEntry[] {
   }
 }
 
+let cachedUser: StoredEntry[] | null = null;
+let loadPromise: Promise<StoredEntry[]> | null = null;
+
+function loadStoredVisibility(): Promise<StoredEntry[]> {
+  if (cachedUser !== null) {
+    return Promise.resolve(cachedUser);
+  }
+  if (!loadPromise) {
+    loadPromise = AsyncStorage.getItem(STORAGE_KEY)
+      .then((raw) => {
+        cachedUser = parseStored(raw);
+        return cachedUser;
+      })
+      .catch(() => {
+        cachedUser = [];
+        return cachedUser;
+      });
+  }
+  return loadPromise;
+}
+
 export function useModelVisibility() {
-  const [user, setUser] = useState<StoredEntry[]>([]);
-  const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<StoredEntry[]>(() => cachedUser ?? []);
+  const [ready, setReady] = useState(() => cachedUser !== null);
 
   useEffect(() => {
+    if (cachedUser !== null) return;
     let cancelled = false;
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
-        if (!cancelled) {
-          setUser(parseStored(raw));
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) {
-          setReady(true);
-        }
-      });
+    loadStoredVisibility().then((entries) => {
+      if (!cancelled) {
+        setUser(entries);
+        setReady(true);
+      }
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
   const persist = useCallback((next: StoredEntry[]) => {
+    cachedUser = next;
     setUser(next);
     void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ user: next })).catch(() => undefined);
   }, []);

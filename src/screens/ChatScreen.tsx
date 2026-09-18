@@ -7,7 +7,7 @@ import {
   TerminalIcon,
   XIcon,
 } from 'lucide-react-native';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Clipboard, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,7 @@ import { useOpencodeChat } from '@/chat/use-opencode-chat';
 import { useProviderCatalog } from '@/chat/use-opencode-provider-management';
 import {
   Conversation,
+  type ConversationProps,
   PromptInput,
   PromptInputFooter,
   Suggestion,
@@ -30,15 +31,17 @@ import { HamburgerButton, SessionsDrawer, type SessionsDrawerHandle } from '@/co
 import { ComposerSuggestions } from '@/components/chat/composer-suggestions';
 import { QuickOpenSheet } from '@/components/chat/quick-open-sheet';
 import { useCommands } from '@/chat/use-workspace';
-import { ModelPicker } from '@/components/chat/model-picker';
+import { ModelPicker, type ModelPickerHandle } from '@/components/chat/model-picker';
 import { ProvidersSheet } from '@/components/chat/providers-sheet';
 import { FullScreenFileViewer } from '@/components/chat/file-panel';
 import { FullScreenDiffViewer } from '@/components/chat/review-panel';
 import {
   ChildSessionsSheet,
   SessionMenuSheet,
+  type SessionMenuSheetHandle,
   SessionPanelSheet,
   useSessionPanels,
+  type SessionPanel,
 } from '@/components/chat/session-panels';
 import { ShellSheet } from '@/components/chat/shell-sheet';
 import { TerminalScreen } from '@/components/chat/terminal-screen';
@@ -48,6 +51,7 @@ import { useDialog } from '@/components/ui/dialog';
 import { SettingsForm } from '@/components/chat/settings-form';
 import { SystemBars } from '@/components/system-bars';
 import { useThemeColors } from '@/hooks/use-theme-colors';
+import { markInteractionStart } from '@/lib/interaction-perf';
 
 
 
@@ -57,6 +61,13 @@ const STARTER_SUGGESTIONS = [
   'Explain this project',
   'List the files here',
 ];
+
+// Prevents the heavy message list (Markdown + syntax highlighting) from
+// re-rendering when overlay state like menuOpen toggles. Mirrors why the
+// native drawer feels instant: opening it issues zero list reconciliation.
+const MemoConversation = memo(function MemoConversation(props: ConversationProps) {
+  return <Conversation {...props} />;
+});
 
 export function ChatScreen() {
   const {
@@ -121,28 +132,18 @@ export function ChatScreen() {
   const [modelOpen, setModelOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
   const [newSessionOpen, setNewSessionOpen] = useState(false);
-  const {
-    menuOpen,
-    setMenuOpen,
-    panel,
-    setPanel,
-    fullScreenFile,
-    setFullScreenFile,
-    fullScreenDiff,
-    setFullScreenDiff,
-    fileState,
-  } = useSessionPanels();
+  const { panel, setPanel, fullScreenFile, setFullScreenFile, fullScreenDiff, setFullScreenDiff, fileState } =
+    useSessionPanels();
+  const menuRef = useRef<SessionMenuSheetHandle>(null);
+  const openMenu = useCallback(() => menuRef.current?.open(), []);
+  const closeMenu = useCallback(() => menuRef.current?.close(), []);
 
   const isBusy = status === 'submitted' || status === 'streaming';
   const lastMessageId = messages.at(-1)?.id;
   const forkDisabled = isBusy || isForking;
 
   const [childrenOpen, setChildrenOpen] = useState(false);
-  const sessionChildren = useSessionChildren(
-    activeServer,
-    activeSessionId,
-    menuOpen || childrenOpen,
-  );
+  const sessionChildren = useSessionChildren(activeServer, activeSessionId, !!activeSessionId);
   const historyDisabled = isBusy || isForking || !activeSessionId;
 
   const handleUndo = useCallback(async () => {
@@ -157,18 +158,18 @@ export function ChatScreen() {
       destructive: true,
     });
     if (confirmed) {
-      setMenuOpen(false);
+      closeMenu();
       void revertSession(lastUser.id);
     }
-  }, [confirm, messages, revertSession, setMenuOpen]);
+  }, [confirm, messages, revertSession, closeMenu]);
 
   const handleRedo = useCallback(() => {
-    setMenuOpen(false);
+    closeMenu();
     void unrevertSession();
-  }, [setMenuOpen, unrevertSession]);
+  }, [closeMenu, unrevertSession]);
 
   const handleShare = useCallback(async () => {
-    setMenuOpen(false);
+    closeMenu();
     const existing = activeSession?.share?.url;
     if (existing) {
       Clipboard.setString(existing);
@@ -180,13 +181,13 @@ export function ChatScreen() {
       Clipboard.setString(session.share.url);
       await notify({ title: 'Session shared', message: session.share.url });
     }
-  }, [activeSession, notify, setMenuOpen, shareSession]);
+  }, [activeSession, notify, closeMenu, shareSession]);
 
   const handleUnshare = useCallback(async () => {
-    setMenuOpen(false);
+    closeMenu();
     await unshareSession();
     await notify({ title: 'Session unshared', message: 'The public link is down.' });
-  }, [notify, setMenuOpen, unshareSession]);
+  }, [notify, closeMenu, unshareSession]);
 
   const handleSummarize = useCallback(async () => {
     const confirmed = await confirm({
@@ -195,10 +196,10 @@ export function ChatScreen() {
       confirmLabel: 'Summarize',
     });
     if (confirmed) {
-      setMenuOpen(false);
+      closeMenu();
       void summarizeSession();
     }
-  }, [confirm, setMenuOpen, summarizeSession]);
+  }, [confirm, closeMenu, summarizeSession]);
 
   const handleForkMessage = useCallback(
     async (messageId: string) => {
@@ -221,7 +222,7 @@ export function ChatScreen() {
       confirmLabel: 'Fork',
     });
     if (confirmed) {
-      setMenuOpen(false);
+      closeMenu();
       void forkSession();
     }
   }, [confirm, forkSession]);
@@ -408,6 +409,63 @@ export function ChatScreen() {
     return limit && limit > 0 ? limit : undefined;
   }, [providerCatalog.data, activeServer.model]);
 
+  const handleCloseMenu = useCallback(() => closeMenu(), [closeMenu]);
+  const handleCloseModel = useCallback(() => setModelOpen(false), []);
+  const handleManageProviders = useCallback(() => {
+    setModelOpen(false);
+    setProvidersOpen(true);
+  }, []);
+  const handleCloseProviders = useCallback(() => setProvidersOpen(false), []);
+  const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
+  const handleOpenProvidersFromSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setProvidersOpen(true);
+  }, []);
+  const handleCloseQuickOpen = useCallback(() => setQuickOpen(false), []);
+  const handleCloseShell = useCallback(() => setShellOpen(false), []);
+  const handleCloseTerminal = useCallback(() => setTerminalOpen(false), []);
+  const handleCloseNewSession = useCallback(() => setNewSessionOpen(false), []);
+  const handleCreateSession = useCallback(
+    (directory?: string) => {
+      setNewSessionOpen(false);
+      void createSession(directory);
+    },
+    [createSession],
+  );
+  const handleCloseChildren = useCallback(() => setChildrenOpen(false), []);
+  const handleClosePanel = useCallback(() => setPanel(null), [setPanel]);
+  const handleBackPanel = useCallback(() => {
+    setPanel(null);
+    openMenu();
+  }, [setPanel, openMenu]);
+  const handleCloseFullScreenFile = useCallback(() => setFullScreenFile(null), [setFullScreenFile]);
+  const handleCloseFullScreenDiff = useCallback(() => setFullScreenDiff(null), [setFullScreenDiff]);
+
+  const handleSelectModel = useCallback(() => {
+    markInteractionStart('menu_to_model');
+    menuRef.current?.closeImmediate();
+    setModelOpen(true);
+  }, [setModelOpen]);
+  const handleOpenPanel = useCallback(
+    (next: SessionPanel) => {
+      markInteractionStart(`menu_to_${next}`);
+      menuRef.current?.closeImmediate();
+      setPanel(next);
+    },
+    [setPanel],
+  );
+  const handleOpenChildren = useCallback(() => {
+    menuRef.current?.closeImmediate();
+    setChildrenOpen(true);
+  }, [setChildrenOpen]);
+  const parentID = activeSession?.parentID;
+  const handleOpenParent = useCallback(() => {
+    closeMenu();
+    if (parentID) {
+      void selectSession(parentID);
+    }
+  }, [parentID, selectSession, closeMenu]);
+
   return (
     <>
       <SessionsDrawer
@@ -451,7 +509,8 @@ export function ChatScreen() {
               <Pressable
                 accessibilityLabel="Session options"
                 className="h-9 w-9 items-center justify-center rounded-full"
-                onPress={() => setMenuOpen(true)}
+                onPressIn={() => markInteractionStart('session_menu_sheet')}
+                onPress={openMenu}
               >
                 <EllipsisVerticalIcon size={20} color={colors.foreground} />
               </Pressable>
@@ -464,7 +523,7 @@ export function ChatScreen() {
                 onOpenSessions={openDrawer}
               />
             ) : (
-              <Conversation
+              <MemoConversation
                 messages={messages}
                 renderItem={renderMessage}
                 onStartReached={hasMoreOlder ? loadOlderMessages : undefined}
@@ -576,41 +635,32 @@ export function ChatScreen() {
 
       <NewSessionSheet
         visible={newSessionOpen}
-        onClose={() => setNewSessionOpen(false)}
+        onClose={handleCloseNewSession}
         server={activeServer}
         currentDirectory={activeServer.directory}
         busy={isLoading}
-        onCreate={(directory) => {
-          setNewSessionOpen(false);
-          void createSession(directory);
-        }}
+        onCreate={handleCreateSession}
       />
       <ModelPicker
         visible={modelOpen}
-        onClose={() => setModelOpen(false)}
-        onManageProviders={() => {
-          setModelOpen(false);
-          setProvidersOpen(true);
-        }}
+        onClose={handleCloseModel}
+        onManageProviders={handleManageProviders}
       />
       <SettingsForm
         visible={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onOpenProviders={() => {
-          setSettingsOpen(false);
-          setProvidersOpen(true);
-        }}
+        onClose={handleCloseSettings}
+        onOpenProviders={handleOpenProvidersFromSettings}
       />
-      <ProvidersSheet visible={providersOpen} onClose={() => setProvidersOpen(false)} />
+      <ProvidersSheet visible={providersOpen} onClose={handleCloseProviders} />
       <QuickOpenSheet
         visible={quickOpen}
-        onClose={() => setQuickOpen(false)}
+        onClose={handleCloseQuickOpen}
         server={activeServer}
         onInsertMention={(path) => insertText(`@${path} `)}
       />
       <ShellSheet
         visible={shellOpen}
-        onClose={() => setShellOpen(false)}
+        onClose={handleCloseShell}
         directoryLabel={activeServer.directory || 'server default folder'}
         isBusy={isBusy}
         onRun={handleRunShell}
@@ -618,20 +668,14 @@ export function ChatScreen() {
       <TerminalScreen
         visible={terminalOpen}
         server={activeServer}
-        onClose={() => setTerminalOpen(false)}
+        onClose={handleCloseTerminal}
       />
       <SessionMenuSheet
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
+        ref={menuRef}
+        onClose={handleCloseMenu}
         modelLabel={modelLabel}
-        onSelectModel={() => {
-          setMenuOpen(false);
-          setModelOpen(true);
-        }}
-        onOpenPanel={(next) => {
-          setMenuOpen(false);
-          setPanel(next);
-        }}
+        onSelectModel={handleSelectModel}
+        onOpenPanel={handleOpenPanel}
         onForkSession={handleForkSession}
         isForking={isForking}
         forkDisabled={isBusy}
@@ -643,37 +687,21 @@ export function ChatScreen() {
         shared={!!activeSession?.share?.url}
         onUnshare={handleUnshare}
         onSummarize={handleSummarize}
-        onOpenChildren={() => {
-          setMenuOpen(false);
-          setChildrenOpen(true);
-        }}
+        onOpenChildren={handleOpenChildren}
         childCount={sessionChildren.data?.length}
-        onOpenParent={
-          activeSession?.parentID
-            ? () => {
-                const parentID = activeSession?.parentID;
-                setMenuOpen(false);
-                if (parentID) {
-                  void selectSession(parentID);
-                }
-              }
-            : undefined
-        }
+        onOpenParent={activeSession?.parentID ? handleOpenParent : undefined}
       />
       <ChildSessionsSheet
         visible={childrenOpen}
-        onClose={() => setChildrenOpen(false)}
+        onClose={handleCloseChildren}
         children={sessionChildren.data ?? []}
         isLoading={sessionChildren.isLoading}
         onSelect={(sessionId) => void selectSession(sessionId)}
       />
       <SessionPanelSheet
         panel={panel}
-        onClose={() => setPanel(null)}
-        onBack={() => {
-          setPanel(null);
-          setMenuOpen(true);
-        }}
+        onClose={handleClosePanel}
+        onBack={handleBackPanel}
         session={activeSession ?? null}
         messages={messages}
         contextLimit={contextLimit}
@@ -685,9 +713,9 @@ export function ChatScreen() {
       <FullScreenFileViewer
         server={activeServer}
         path={fullScreenFile}
-        onClose={() => setFullScreenFile(null)}
+        onClose={handleCloseFullScreenFile}
       />
-      <FullScreenDiffViewer diff={fullScreenDiff} onClose={() => setFullScreenDiff(null)} />
+      <FullScreenDiffViewer diff={fullScreenDiff} onClose={handleCloseFullScreenDiff} />
       <SystemBars />
     </>
   );

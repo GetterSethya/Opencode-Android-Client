@@ -44,7 +44,9 @@
     "prebuild": "expo prebuild --platform android",
     "build:apk": "expo prebuild --platform android && cd android && ./gradlew assembleDebug",
     "typecheck": "tsc --noEmit",
-    "benchmark": "npx tsx -r ./scripts/benchmark/setup.cjs ./scripts/benchmark/runner.tsx"
+    "benchmark": "npx tsx -r ./scripts/benchmark/setup.cjs ./scripts/benchmark/runner.tsx",
+    "benchmark:interaction": "npx tsx -r ./scripts/benchmark/setup.cjs ./scripts/benchmark/interaction-runner.tsx",
+    "test:e2e": "maestro test .maestro/"
   },
   "private": true
 }

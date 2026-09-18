@@ -18,7 +18,13 @@ function withRepeat(val) {
   return val;
 }
 
-function withTiming(toValue) {
+function withTiming(toValue, config, callback) {
+  if (callback) callback(true);
+  return toValue;
+}
+
+function withSpring(toValue, config, callback) {
+  if (callback) callback(true);
   return toValue;
 }
 
@@ -26,14 +32,29 @@ function withSequence(...vals) {
   return vals[0];
 }
 
+function runOnJS(fn) {
+  return fn;
+}
+
 const Easing = {
   linear: (t) => t,
   ease: (t) => t,
   inOut: () => (t) => t,
+  out: () => (t) => t,
 };
 
 const FadeIn = {
   duration: () => FadeIn,
+};
+const FadeOut = {
+  duration: () => FadeOut,
+};
+const SlideInDown = {
+  duration: () => SlideInDown,
+  springify: () => SlideInDown,
+};
+const SlideOutDown = {
+  duration: () => SlideOutDown,
 };
 
 module.exports = {
@@ -43,7 +64,12 @@ module.exports = {
   useAnimatedStyle,
   withRepeat,
   withTiming,
+  withSpring,
   withSequence,
+  runOnJS,
   Easing,
   FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
 };

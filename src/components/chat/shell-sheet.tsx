@@ -1,7 +1,6 @@
 import { TerminalIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import {
-  Modal,
   Pressable,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useThemeColors } from '@/hooks/use-theme-colors';
@@ -36,13 +36,7 @@ export function ShellSheet({
   onRun: (command: string) => void;
 }) {
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <BottomSheet visible={visible} onClose={onClose}>
       {/* Mounted only while open so each open starts from a fresh draft. */}
       {visible ? (
         <ShellSheetContent
@@ -52,7 +46,7 @@ export function ShellSheet({
           onRun={onRun}
         />
       ) : null}
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -88,11 +82,8 @@ function ShellSheetContent({
   };
 
   return (
-    <View className="flex-1 justify-end">
-      <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-      <KeyboardAvoidingView behavior="padding">
+    <KeyboardAvoidingView behavior="padding">
         <View
-          className="rounded-t-3xl bg-surface pt-4"
           style={{
             paddingBottom: insets.bottom + 16,
             paddingLeft: insets.left + 16,
@@ -138,7 +129,6 @@ function ShellSheetContent({
             Tip: messages starting with ! run as shell commands too.
           </Text>
         </View>
-      </KeyboardAvoidingView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
