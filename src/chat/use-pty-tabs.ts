@@ -48,12 +48,17 @@ function ptyKey(server: ServerConfig): (string | undefined)[] {
 export function usePtyTerminal({
   server,
   enabled,
+  onData,
 }: {
   server: ServerConfig;
   enabled: boolean;
+  onData?: (tabId: string, chunk: string) => void;
 }) {
   const client = useMemo(() => createClientFromServer(server), [server]);
   const queryClient = useQueryClient();
+
+  const onDataRef = useRef(onData);
+  onDataRef.current = onData;
 
   const [requestedActiveId, setRequestedActiveId] = useState<string | null>(null);
   const [exited, setExited] = useState<{ id: string; title: string }[]>([]);
@@ -260,6 +265,7 @@ export function usePtyTerminal({
             setCursor(tabId, cursorValue);
             return;
           }
+          onDataRef.current?.(tabId, data);
           pushOutput(tabId, data);
           return;
         }
@@ -267,7 +273,11 @@ export function usePtyTerminal({
           const cursorValue = parseCursorFrame(data);
           if (cursorValue !== undefined) {
             setCursor(tabId, cursorValue);
+            return;
           }
+          const text = new TextDecoder().decode(data);
+          onDataRef.current?.(tabId, text);
+          pushOutput(tabId, text);
           return;
         }
         if (typeof Blob !== 'undefined' && data instanceof Blob) {
@@ -276,7 +286,11 @@ export function usePtyTerminal({
               const cursorValue = parseCursorFrame(buffer);
               if (cursorValue !== undefined) {
                 setCursor(tabId, cursorValue);
+                return;
               }
+              const text = new TextDecoder().decode(buffer);
+              onDataRef.current?.(tabId, text);
+              pushOutput(tabId, text);
             }
           });
         }
@@ -442,6 +456,18 @@ export function usePtyTerminal({
     setAttempt((value) => value + 1);
   }, [refresh]);
 
+  const resize = useCallback(
+    (cols: number, rows: number) => {
+      if (!activeRunning) {
+        return;
+      }
+      client.updatePty(activeRunning.id, { size: { cols, rows } }).catch(() => {
+        // Ignored
+      });
+    },
+    [activeRunning, client],
+  );
+
   const tabs: PtyTab[] = useMemo(() => {
     const live = new Map(running.map((info) => [info.id, info]));
     const ordered: PtyTab[] = [];
@@ -486,6 +512,7 @@ export function usePtyTerminal({
     },
     send,
     submit,
+    resize,
     createTab,
     removeTab,
     refresh,

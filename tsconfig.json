@@ -3,7 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "opencode-terminal": ["./modules/terminal-view"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "./uniwind-types.d.ts", "./expo-env.d.ts"]

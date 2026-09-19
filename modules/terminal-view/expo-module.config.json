@@ -1,0 +1,7 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.opencode.terminal.OpencodeTerminalModule"],
+    "package": "com.opencode.terminal"
+  }
+}

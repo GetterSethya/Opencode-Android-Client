@@ -1,0 +1,7 @@
+{
+  "name": "opencode-terminal",
+  "version": "1.0.0",
+  "description": "Native Android terminal view powered by Termux emulator for opencode-expo",
+  "main": "index.ts",
+  "types": "index.ts"
+}

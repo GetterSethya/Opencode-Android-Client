@@ -1,4 +1,6 @@
 import {
+  CornerDownLeftIcon,
+  KeyboardIcon,
   PlusIcon,
   RotateCcwIcon,
   SendIcon,
@@ -6,17 +8,8 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ServerConfig } from '@/chat/settings';
@@ -28,6 +21,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
+import {
+  OpencodeTerminalView,
+  type OpencodeTerminalViewRef,
+  type TerminalTheme,
+} from 'opencode-terminal';
 
 const ETX = String.fromCharCode(3);
 const EOT = String.fromCharCode(4);
@@ -103,60 +101,20 @@ function TabChip({
   );
 }
 
-function Transcript({ text, placeholder }: { text: string; placeholder: string }) {
-  const scrollRef = useRef<ScrollView>(null);
-  const stickRef = useRef(true);
-
-  const handleScroll = useCallback(
-    ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const distance =
-        nativeEvent.contentSize.height -
-        nativeEvent.layoutMeasurement.height -
-        nativeEvent.contentOffset.y;
-      stickRef.current = distance < 64;
-    },
-    [],
-  );
-
-  const scrollToBottom = useCallback(() => {
-    if (stickRef.current) {
-      scrollRef.current?.scrollToEnd({ animated: false });
-    }
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [text, scrollToBottom]);
-
-  return (
-    <ScrollView
-      ref={scrollRef}
-      className="flex-1"
-      contentContainerClassName="px-3 pt-2 pb-8"
-      onScroll={handleScroll}
-      onContentSizeChange={scrollToBottom}
-      scrollEventThrottle={100}
-    >
-      <Text selectable className="font-mono text-[13px] leading-[20px] text-foreground">
-        {text || placeholder}
-      </Text>
-    </ScrollView>
-  );
-}
-
 const EXTRA_KEYS = [
   { label: 'Tab', send: '\t' },
-  { label: '^C', send: ETX },
-  { label: '^D', send: EOT },
+  { label: 'Ctrl+C', send: ETX },
+  { label: 'Ctrl+D', send: EOT },
   { label: 'Esc', send: ESC },
   { label: '↑', send: `${ESC}[A` },
   { label: '↓', send: `${ESC}[B` },
+  { label: '←', send: `${ESC}[D` },
+  { label: '→', send: `${ESC}[C` },
 ] as const;
 
 /**
- * Multi-command terminal over the server's PTY service: persistent shells in
- * tabs, live output over one WebSocket per active tab. The run-once
- * ShellSheet stays for single commands whose output belongs in the chat.
+ * Multi-command native terminal powered by Termux terminal emulator:
+ * persistent shells in tabs, live output over WebSocket, full ANSI colors and VT100/VT220 emulation.
  */
 export function TerminalScreen({
   visible,
@@ -171,32 +129,58 @@ export function TerminalScreen({
   const colors = useThemeColors();
   const { confirm } = useDialog();
   const keyboardHeight = useKeyboardHeight();
+  const terminalRef = useRef<OpencodeTerminalViewRef>(null);
   const [input, setInput] = useState('');
 
-  const terminal = usePtyTerminal({ server, enabled: visible });
+  const handleData = useCallback((tabId: string, chunk: string) => {
+    terminalRef.current?.write(chunk);
+  }, []);
+
+  const terminal = usePtyTerminal({
+    server,
+    enabled: visible,
+    onData: handleData,
+  });
+
   const {
     tabs,
     active,
     activeId,
     selectTab,
-    activeText,
     canSend,
     creating,
     listState,
     send,
-    submit,
+    resize,
     createTab,
     removeTab,
     retry,
   } = terminal;
 
-  const handleSubmit = useCallback(() => {
-    const line = input;
-    if (!line.trim() || !submit(line)) {
-      return;
-    }
-    setInput('');
-  }, [input, submit]);
+  const terminalTheme: TerminalTheme = useMemo(
+    () => ({
+      background: colors.background,
+      foreground: colors.foreground,
+      cursor: colors.foreground,
+      color0: colors.dark ? '#18181b' : '#000000',
+      color1: colors.danger,
+      color2: colors.success,
+      color3: colors.dark ? '#facc15' : '#ca8a04',
+      color4: colors.dark ? '#60a5fa' : '#2563eb',
+      color5: colors.dark ? '#c084fc' : '#9333ea',
+      color6: colors.dark ? '#38bdf8' : '#0284c7',
+      color7: colors.foreground,
+      color8: colors.muted,
+      color9: colors.danger,
+      color10: colors.success,
+      color11: colors.dark ? '#fde047' : '#eab308',
+      color12: colors.dark ? '#93c5fd' : '#3b82f6',
+      color13: colors.dark ? '#d8b4fe' : '#a855f7',
+      color14: colors.dark ? '#7dd3fc' : '#0ea5e9',
+      color15: colors.foreground,
+    }),
+    [colors],
+  );
 
   const handleNewTab = useCallback(() => {
     void createTab().catch(() => {
@@ -231,6 +215,36 @@ export function TerminalScreen({
     [handleNewTab, removeTab],
   );
 
+  const handleTerminalInput = useCallback(
+    (event: { nativeEvent: { data: string } }) => {
+      send(event.nativeEvent.data);
+    },
+    [send],
+  );
+
+  const handleTerminalResize = useCallback(
+    (event: { nativeEvent: { cols: number; rows: number } }) => {
+      resize(event.nativeEvent.cols, event.nativeEvent.rows);
+    },
+    [resize],
+  );
+
+  const handleSendKey = useCallback(
+    (keyStr: string) => {
+      send(keyStr);
+    },
+    [send],
+  );
+
+  const handleSubmitInput = useCallback(() => {
+    const line = input;
+    if (!line.trim() || !canSend) {
+      return;
+    }
+    send(`${line}\n`);
+    setInput('');
+  }, [input, canSend, send]);
+
   return (
     <Modal
       visible={visible}
@@ -240,11 +254,6 @@ export function TerminalScreen({
     >
       <View
         className="flex-1 bg-background"
-        // RN Modals live in their own Android window, which does NOT resize for
-        // the IME (the activity uses adjustResize, the modal window does not),
-        // so the padding must be applied manually. The reported keyboard height
-        // excludes the navigation bar while the modal spans it, hence the sum:
-        // on this device 233.8dp + 47.3dp = 281dp, matching the IME frame.
         style={{
           paddingTop: insets.top,
           paddingBottom: insets.bottom + keyboardHeight,
@@ -291,8 +300,6 @@ export function TerminalScreen({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            // RN's ScrollView defaults to flexGrow: 1, which would stretch this
-            // strip over the whole column and starve the transcript.
             style={{ flexGrow: 0, flexShrink: 0 }}
             className="border-b border-border"
             contentContainerClassName="flex-row items-center gap-2 px-3 py-2"
@@ -350,7 +357,7 @@ export function TerminalScreen({
             ) : active?.exited ? (
               <View className="flex-1 items-center justify-center gap-3 px-8">
                 <Text className="text-center text-sm text-muted">
-                  {active.title} ended. Output is kept above only while this screen stays open.
+                  {active.title} ended.
                 </Text>
                 <View className="w-full gap-2">
                   <Button onPress={() => handleRestart(active)}>Restart session</Button>
@@ -360,14 +367,15 @@ export function TerminalScreen({
                 </View>
               </View>
             ) : (
-              <>
-                <Transcript
-                  text={activeText}
-                  placeholder={
-                    active?.status === 'open'
-                      ? 'Connected — type a command below.'
-                      : 'Connecting…'
-                  }
+              <View className="flex-1">
+                <OpencodeTerminalView
+                  ref={terminalRef}
+                  style={{ flex: 1 }}
+                  fontSize={13}
+                  theme={terminalTheme}
+                  cursorBlink={true}
+                  onInput={handleTerminalInput}
+                  onResize={handleTerminalResize}
                 />
                 {active?.status === 'error' ? (
                   <View className="flex-row items-center gap-2 border-t border-border px-3 py-2">
@@ -385,61 +393,83 @@ export function TerminalScreen({
                     </Pressable>
                   </View>
                 ) : null}
-              </>
+              </View>
             )}
           </View>
 
           {active && !active.exited && tabs.length > 0 ? (
-            <>
-              <View className="flex-row gap-1.5 border-t border-border px-3 pt-2">
-                {EXTRA_KEYS.map((key) => (
-                  <Pressable
-                    key={key.label}
-                    accessibilityLabel={`Send ${key.label}`}
-                    disabled={!canSend}
-                    className="flex-1 items-center rounded-lg bg-surface-secondary py-2 disabled:opacity-50"
-                    onPress={() => send(key.send)}
-                  >
-                    <Text className="font-mono text-xs text-foreground">{key.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <View className="flex-row items-center gap-2 px-3 py-2">
-                <Text className="font-mono text-sm text-muted">❯</Text>
+            <View className="border-t border-border bg-background">
+              <View className="flex-row items-center gap-2 px-3 pt-2">
+                <Pressable
+                  accessibilityLabel="Focus terminal keyboard"
+                  hitSlop={8}
+                  className="h-10 w-10 items-center justify-center rounded-xl bg-surface-secondary"
+                  onPress={() => terminalRef.current?.focus()}
+                >
+                  <KeyboardIcon size={18} color={colors.foreground} />
+                </Pressable>
                 <TextInput
-                  className="flex-1 rounded-xl bg-surface-secondary px-3 py-2.5 font-mono text-sm text-foreground"
-                  placeholder="ls -la"
+                  className="flex-1 rounded-xl bg-surface-secondary px-3 py-2 font-mono text-sm text-foreground"
+                  placeholder="Type a command…"
                   placeholderTextColor={colors.muted}
                   value={input}
                   onChangeText={setInput}
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="send"
-                  onSubmitEditing={handleSubmit}
+                  onSubmitEditing={handleSubmitInput}
                 />
                 <Pressable
                   accessibilityLabel="Send command"
                   hitSlop={8}
                   disabled={!canSend || !input.trim()}
                   className="h-10 w-10 items-center justify-center rounded-full bg-surface-secondary disabled:opacity-50"
-                  onPress={handleSubmit}
+                  onPress={handleSubmitInput}
                 >
-                  <SendIcon size={17} color={colors.foreground} />
+                  <SendIcon size={16} color={colors.foreground} />
                 </Pressable>
               </View>
-              <View className="flex-row items-center gap-2 px-3 pb-1">
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flexGrow: 0, flexShrink: 0 }}
+                contentContainerClassName="flex-row items-center gap-1.5 px-3 py-2"
+              >
+                {EXTRA_KEYS.map((key) => (
+                  <Pressable
+                    key={key.label}
+                    accessibilityLabel={`Send ${key.label}`}
+                    disabled={!canSend}
+                    className="items-center rounded-lg bg-surface-secondary px-3 py-2 disabled:opacity-50"
+                    onPress={() => handleSendKey(key.send)}
+                  >
+                    <Text className="font-mono text-xs text-foreground">{key.label}</Text>
+                  </Pressable>
+                ))}
                 <Pressable
-                  accessibilityLabel="Interrupt (Ctrl+C)"
-                  hitSlop={8}
+                  accessibilityLabel="Send Enter"
                   disabled={!canSend}
-                  className="flex-row items-center gap-1 disabled:opacity-50"
-                  onPress={() => send(ETX)}
+                  className="flex-row items-center gap-1 rounded-lg bg-surface-secondary px-3 py-2 disabled:opacity-50"
+                  onPress={() => handleSendKey('\n')}
                 >
-                  <Text className="text-xs text-muted">Interrupt</Text>
+                  <CornerDownLeftIcon size={12} color={colors.foreground} />
+                  <Text className="font-mono text-xs text-foreground">Enter</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Clear screen"
+                  disabled={!canSend}
+                  className="rounded-lg bg-surface-secondary px-3 py-2 disabled:opacity-50"
+                  onPress={() => {
+                    terminalRef.current?.clear();
+                    send('clear\n');
+                  }}
+                >
+                  <Text className="font-mono text-xs text-foreground">Clear</Text>
                 </Pressable>
                 <Pressable
                   accessibilityLabel="Remove ended sessions"
                   hitSlop={8}
+                  className="flex-row items-center gap-1 px-2 py-2"
                   onPress={() => {
                     for (const tab of tabs) {
                       if (tab.exited) {
@@ -448,13 +478,11 @@ export function TerminalScreen({
                     }
                   }}
                 >
-                  <View className="flex-row items-center gap-1">
-                    <Trash2Icon size={13} color={colors.muted} />
-                    <Text className="text-xs text-muted">Clear ended</Text>
-                  </View>
+                  <Trash2Icon size={13} color={colors.muted} />
+                  <Text className="text-xs text-muted">Clear ended</Text>
                 </Pressable>
-              </View>
-            </>
+              </ScrollView>
+            </View>
           ) : null}
         </View>
       </View>
