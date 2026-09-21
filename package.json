@@ -5,6 +5,8 @@
   "dependencies": {
     "@legendapp/list": "^3.3.11",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@rnrepo/build-tools": "^0.2.2",
+    "@rnrepo/expo-config-plugin": "^0.3.6",
     "@ronradtke/react-native-markdown-display": "^9.0.3",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.102.8",

@@ -114,7 +114,9 @@ EXPO_PUBLIC_OPENCODE_URL="http://192.168.1.10:4097" \
   ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 ```
 
-The APK lands at `android/app/build/outputs/apk/release/app-release.apk`. Install it with `adb install -r <apk>`. Restrict `reactNativeArchitectures` to your device's ABI as above to keep build times down.
+The APK lands at `android/app/build/outputs/apk/release/app-release.apk`. Install it with `adb install -r <apk>`. The `-PreactNativeArchitectures` flag overrides `gradle.properties` from the command line, so release builds stay arm64-only even though the project targets both ABIs by default.
+
+The template default for `reactNativeArchitectures` is all four ABIs, which quadruples native compile time (and previously crashed the build machine). `plugins/with-android-manifest-tweaks.js` rewrites it to `arm64-v8a,x86_64` on every prebuild: arm64 for physical devices, x86_64 for the Windows emulator. To build for just one, pass `-PreactNativeArchitectures=arm64-v8a` (or `x86_64`) to Gradle.
 
 `APP_VARIANT=release` switches the package id to `com.opencode.expo.release` (app name "opencode") so the release installs **alongside** the dev-client build (`com.opencode.expo`) instead of overwriting it. Re-run plain `npx expo prebuild --platform android` afterwards to switch the local `android/` project back to dev.
 

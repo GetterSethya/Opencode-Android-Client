@@ -44,6 +44,7 @@ module.exports = {
       // collides with the development build's, so Android cannot tell which
       // app should handle it. The release build has no use for that scheme.
       ...(isRelease ? [['expo-dev-client', { addGeneratedScheme: false }]] : []),
+      '@rnrepo/expo-config-plugin',
       './plugins/with-android-manifest-tweaks',
     ],
   },

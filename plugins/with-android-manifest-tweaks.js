@@ -7,8 +7,18 @@
  * - android:usesCleartextTraffic + android:networkSecurityConfig on <application>.
  * - MainActivity screenOrientation=unspecified (landscape support).
  * - android:enableOnBackInvokedCallback=false on <application>.
+ * - reactNativeArchitectures=arm64-v8a,x86_64, dropping the two 32-bit ABIs from
+ *   the template default. arm64 covers physical devices, x86_64 covers the
+ *   Windows emulator; keeping it to these two halves the native compile work
+ *   compared to the all-four default that was crashing CI. Release builds stay
+ *   arm64-only via the -P flag on the Gradle command line (CLI wins over
+ *   gradle.properties).
  */
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const {
+  withAndroidManifest,
+  withDangerousMod,
+  withGradleProperties,
+} = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -51,8 +61,26 @@ function withNetworkSecurityConfigFile(config) {
   ]);
 }
 
+function withAndroidArchitectures(config) {
+  return withGradleProperties(config, (config) => {
+    const props = config.modResults;
+    const existing = props.find((item) => item.key === 'reactNativeArchitectures');
+    if (existing) {
+      existing.value = 'arm64-v8a,x86_64';
+    } else {
+      props.push({
+        type: 'property',
+        key: 'reactNativeArchitectures',
+        value: 'arm64-v8a,x86_64',
+      });
+    }
+    return config;
+  });
+}
+
 module.exports = function withAndroidManifestTweaks(config) {
   config = withManifestAttributes(config);
   config = withNetworkSecurityConfigFile(config);
+  config = withAndroidArchitectures(config);
   return config;
 };
