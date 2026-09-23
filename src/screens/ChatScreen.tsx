@@ -668,58 +668,54 @@ export function ChatScreen() {
         </SafeAreaView>
       </SessionsDrawer>
 
-      {newSessionOpen ? (
-        <NewSessionSheet
-          visible={newSessionOpen}
-          onClose={handleCloseNewSession}
-          server={activeServer}
-          currentDirectory={activeServer.directory}
-          busy={isLoading}
-          onCreate={handleCreateSession}
-          onCloseProject={() => void closeProject()}
-        />
-      ) : null}
-      {modelOpen ? (
-        <ModelPicker
-          visible={modelOpen}
-          onClose={handleCloseModel}
-          onManageProviders={handleManageProviders}
-        />
-      ) : null}
-      {settingsOpen ? (
-        <SettingsForm
-          visible={settingsOpen}
-          onClose={handleCloseSettings}
-          onOpenProviders={handleOpenProvidersFromSettings}
-        />
-      ) : null}
-      {providersOpen ? (
-        <ProvidersSheet visible={providersOpen} onClose={handleCloseProviders} />
-      ) : null}
-      {quickOpen ? (
-        <QuickOpenSheet
-          visible={quickOpen}
-          onClose={handleCloseQuickOpen}
-          server={activeServer}
-          onInsertMention={(path) => insertText(`@${path} `)}
-        />
-      ) : null}
-      {shellOpen ? (
-        <ShellSheet
-          visible={shellOpen}
-          onClose={handleCloseShell}
-          directoryLabel={activeServer.directory || 'server default folder'}
-          isBusy={isBusy}
-          onRun={handleRunShell}
-        />
-      ) : null}
-      {terminalOpen ? (
-        <TerminalScreen
-          visible={terminalOpen}
-          server={activeServer}
-          onClose={handleCloseTerminal}
-        />
-      ) : null}
+      {/* Always mounted (like SessionMenuSheet): BottomSheet animates
+          visibility via shared values, so conditional mounting would skip
+          both the enter and exit animations. Queries inside stay gated on
+          `visible`. */}
+      <NewSessionSheet
+        visible={newSessionOpen}
+        onClose={handleCloseNewSession}
+        server={activeServer}
+        currentDirectory={activeServer.directory}
+        busy={isLoading}
+        onCreate={handleCreateSession}
+        onCloseProject={() => void closeProject()}
+      />
+      {/* All sheets stay mounted (like SessionMenuSheet): BottomSheet
+          animates visibility via shared values, so conditional mounting
+          would skip both the enter and exit animations. Query hooks inside
+          stay gated on `visible`; QuickOpen/Shell/Settings remount their
+          content per open so drafts reset. TerminalScreen's PTY is gated
+          on `visible` too. */}
+      <ModelPicker
+        visible={modelOpen}
+        onClose={handleCloseModel}
+        onManageProviders={handleManageProviders}
+      />
+      <SettingsForm
+        visible={settingsOpen}
+        onClose={handleCloseSettings}
+        onOpenProviders={handleOpenProvidersFromSettings}
+      />
+      <ProvidersSheet visible={providersOpen} onClose={handleCloseProviders} />
+      <QuickOpenSheet
+        visible={quickOpen}
+        onClose={handleCloseQuickOpen}
+        server={activeServer}
+        onInsertMention={(path) => insertText(`@${path} `)}
+      />
+      <ShellSheet
+        visible={shellOpen}
+        onClose={handleCloseShell}
+        directoryLabel={activeServer.directory || 'server default folder'}
+        isBusy={isBusy}
+        onRun={handleRunShell}
+      />
+      <TerminalScreen
+        visible={terminalOpen}
+        server={activeServer}
+        onClose={handleCloseTerminal}
+      />
       <SessionMenuSheet
         ref={menuRef}
         onClose={handleCloseMenu}
@@ -743,15 +739,13 @@ export function ChatScreen() {
         projectDirectory={activeServer.directory}
         onCloseProject={handleCloseProject}
       />
-      {childrenOpen ? (
-        <ChildSessionsSheet
-          visible={childrenOpen}
-          onClose={handleCloseChildren}
-          children={sessionChildren.data ?? []}
-          isLoading={sessionChildren.isLoading}
-          onSelect={(sessionId) => void selectSession(sessionId)}
-        />
-      ) : null}
+      <ChildSessionsSheet
+        visible={childrenOpen}
+        onClose={handleCloseChildren}
+        children={sessionChildren.data ?? []}
+        isLoading={sessionChildren.isLoading}
+        onSelect={(sessionId) => void selectSession(sessionId)}
+      />
       {panel ? (
         <SessionPanelSheet
           panel={panel}

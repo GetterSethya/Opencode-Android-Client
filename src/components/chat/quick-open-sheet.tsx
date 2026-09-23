@@ -39,14 +39,13 @@ export function QuickOpenSheet({
 }) {
   return (
     <BottomSheet visible={visible} onClose={onClose}>
-      {/* Mounted only while open so each open starts from an empty query. */}
-      {visible ? (
-        <QuickOpenSheetContent
-          server={server}
-          onClose={onClose}
-          onInsertMention={onInsertMention}
-        />
-      ) : null}
+      {/* Remounted each open so every open starts from an empty query. */}
+      <QuickOpenSheetContent
+        key={visible ? 'open' : 'closed'}
+        server={server}
+        onClose={onClose}
+        onInsertMention={onInsertMention}
+      />
     </BottomSheet>
   );
 }

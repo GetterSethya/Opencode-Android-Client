@@ -56,8 +56,12 @@ const inputClass =
 export function SettingsForm({ visible, onClose, onOpenProviders }: SettingsFormProps) {
   return (
     <BottomSheet visible={visible} onClose={onClose}>
-      {/* Mounted only while open so each open starts on the main settings view. */}
-      {visible ? <SettingsFormContent onClose={onClose} onOpenProviders={onOpenProviders} /> : null}
+      {/* Remounted each open so every open starts on the main settings view. */}
+      <SettingsFormContent
+        key={visible ? 'open' : 'closed'}
+        onClose={onClose}
+        onOpenProviders={onOpenProviders}
+      />
     </BottomSheet>
   );
 }

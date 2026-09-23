@@ -37,15 +37,14 @@ export function ShellSheet({
 }) {
   return (
     <BottomSheet visible={visible} onClose={onClose}>
-      {/* Mounted only while open so each open starts from a fresh draft. */}
-      {visible ? (
-        <ShellSheetContent
-          directoryLabel={directoryLabel}
-          isBusy={isBusy}
-          onClose={onClose}
-          onRun={onRun}
-        />
-      ) : null}
+      {/* Remounted each open so every open starts from a fresh draft. */}
+      <ShellSheetContent
+        key={visible ? 'open' : 'closed'}
+        directoryLabel={directoryLabel}
+        isBusy={isBusy}
+        onClose={onClose}
+        onRun={onRun}
+      />
     </BottomSheet>
   );
 }

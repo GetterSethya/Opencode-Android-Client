@@ -156,9 +156,9 @@ export const ModelPicker = memo(
         ? Math.max(240, height - keyboardHeight - 320)
         : Math.min(height * 0.7, 520);
     const { activeServer, setActiveModel } = useChatSettings();
-    const { models, isLoading, error } = useOpencodeProviders(activeServer, true);
+    const { models, isLoading, error } = useOpencodeProviders(activeServer, visible);
     const visibility = useModelVisibility();
-    const catalog = useProviderCatalog(activeServer, true);
+    const catalog = useProviderCatalog(activeServer, visible);
     const [query, setQuery] = useState('');
 
   const { releaseByKey, latest } = useMemo(() => {

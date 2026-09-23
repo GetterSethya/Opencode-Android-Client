@@ -67,7 +67,12 @@ export function BottomSheet({
   // relative to the translated container (so its overlap math yields 0).
   // Lift the whole overlay by the keyboard height instead.
   const keyboardHeight = useKeyboardHeight();
-  const progress = useSharedValue(visible ? 1 : 0);
+  // Always start hidden so a mount-with-visible=true (ChatScreen mounts
+  // sheets conditionally, e.g. `{open ? <Sheet visible /> : null}`) still
+  // plays the enter animation via the effect below. Initializing from
+  // `visible` would start progress at 1 and withTiming(1) is a no-op, so
+  // the sheet would pop in with no animation.
+  const progress = useSharedValue(0);
   // Start with a realistic sheet height estimate (~60% window) so initial layout
   // measurement doesn't cause a sudden translateY jump during animation.
   const sheetHeight = useSharedValue(Math.min(windowHeight * 0.65, 520));
