@@ -19,8 +19,10 @@ import type { PermissionReply } from '@/chat/opencode';
 import { useOpencodeChat } from '@/chat/use-opencode-chat';
 import { useProviderCatalog } from '@/chat/use-opencode-provider-management';
 import {
+  ActiveTodosBar,
   Conversation,
   type ConversationProps,
+  latestActiveTodos,
   Loader,
   PromptInput,
   PromptInputFooter,
@@ -335,6 +337,9 @@ export function ChatScreen() {
   // Messages composed while a run is in flight wait in the queue and are
   // sent automatically, in order, once the session goes idle again.
   const queuedForSession = messageQueue.filter((entry) => entry.sessionID === activeSessionId);
+  // The latest todowrite checklist with unfinished work stays pinned below
+  // the navbar in a Queue-style card until every item completes.
+  const activeTodos = useMemo(() => latestActiveTodos(messages), [messages]);
 
   const handleSubmit = () => {
     if (!input.trim() && attachments.length === 0) {
@@ -542,6 +547,8 @@ export function ChatScreen() {
                 <EllipsisVerticalIcon size={20} color={colors.foreground} />
               </Pressable>
             </View>
+
+            {activeTodos.length > 0 ? <ActiveTodosBar todos={activeTodos} /> : null}
 
             {loadError && messages.length === 0 && !isLoading ? (
               <ConversationLoadError
