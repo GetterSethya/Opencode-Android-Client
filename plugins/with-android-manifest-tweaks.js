@@ -13,6 +13,10 @@
  *   compared to the all-four default that was crashing CI. Release builds stay
  *   arm64-only via the -P flag on the Gradle command line (CLI wins over
  *   gradle.properties).
+ * - Low-memory Gradle tuning (org.gradle.parallel=false, -Xmx1024m,
+ *   org.gradle.workers.max=2): this dev machine has 4 cores / 11GiB RAM and
+ *   was swapping hard (8GiB swap full) during the x86_64 C++ compile, which
+ *   made ninja/clang crawl. Slower task scheduling, but no paging storm.
  */
 const {
   withAndroidManifest,
@@ -78,9 +82,29 @@ function withAndroidArchitectures(config) {
   });
 }
 
+function upsertGradleProperty(props, key, value) {
+  const existing = props.find((item) => item.key === key);
+  if (existing) {
+    existing.value = value;
+  } else {
+    props.push({ type: 'property', key, value });
+  }
+}
+
+function withLowMemoryGradleSettings(config) {
+  return withGradleProperties(config, (config) => {
+    const props = config.modResults;
+    upsertGradleProperty(props, 'org.gradle.jvmargs', '-Xmx1024m -XX:MaxMetaspaceSize=384m');
+    upsertGradleProperty(props, 'org.gradle.parallel', 'false');
+    upsertGradleProperty(props, 'org.gradle.workers.max', '2');
+    return config;
+  });
+}
+
 module.exports = function withAndroidManifestTweaks(config) {
   config = withManifestAttributes(config);
   config = withNetworkSecurityConfigFile(config);
   config = withAndroidArchitectures(config);
+  config = withLowMemoryGradleSettings(config);
   return config;
 };

@@ -77,6 +77,18 @@ jobs:
           EXPO_PUBLIC_APP_VERSION_CODE: ${{ github.run_number }}
           EXPO_PUBLIC_OPENCODE_URL: ${{ vars.EXPO_PUBLIC_OPENCODE_URL }}
 
+      # The local config plugin pins low-memory Gradle settings
+      # (parallel=false, -Xmx1024m, workers.max=2) for the 4-core / 11GiB dev
+      # machine. CI runners have headroom, so restore full parallelism here —
+      # this must run after prebuild, which regenerates android/gradle.properties.
+      - name: Restore full-parallel Gradle settings for CI
+        run: |
+          f=android/gradle.properties
+          sed -i 's/^org\.gradle\.jvmargs=.*/org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m/' "$f"
+          sed -i 's/^org\.gradle\.parallel=.*/org.gradle.parallel=true/' "$f"
+          sed -i 's/^org\.gradle\.workers\.max=.*/org.gradle.workers.max=4/' "$f"
+          grep -E '^(org\.gradle\.jvmargs|org\.gradle\.parallel|org\.gradle\.workers\.max)=' "$f"
+
       - name: Assemble release APK (arm64-v8a)
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
         working-directory: android
